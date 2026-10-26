@@ -40,7 +40,7 @@ export function mediaKind(name: string, mime = ""): MediaKind | null {
 
 const hidden = (name: string) => name.startsWith(".") || name === "node_modules" || name === "$RECYCLE.BIN";
 
-export const supportsDirectoryPicker = () => typeof window !== "undefined" && "showDirectoryPicker" in window;
+export const supportsDirectoryPicker = () => typeof window !== "undefined" && typeof window.showDirectoryPicker === "function";
 
 const reasonFor = (err: unknown) => {
   const name = err instanceof DOMException ? err.name : "";

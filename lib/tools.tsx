@@ -54,6 +54,19 @@ export const TOOLS: Tool[] = [
     ),
   },
   {
+    name: "Video Compressor",
+    description: "Shrink videos on your computer and save them next to the originals.",
+    href: "/video-compressor",
+    accent: "bg-indigo-100 text-indigo-600 dark:bg-indigo-500/15 dark:text-indigo-400",
+    icon: (
+      <Icon>
+        <rect x="3" y="6" width="13" height="12" rx="2" />
+        <path d="m16 10 5-3v10l-5-3" />
+        <path d="M7.5 10.5 9.5 12.5 7.5 14.5M12 10.5 10 12.5 12 14.5" />
+      </Icon>
+    ),
+  },
+  {
     name: "Logo to SVG",
     description: "Trace a PNG or JPG logo into a clean SVG, single or multi-color.",
     href: "/logo-to-svg",
