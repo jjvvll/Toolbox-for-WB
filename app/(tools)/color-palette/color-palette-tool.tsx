@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { Fragment, useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import CopyButton from "@/components/copy-button";
 import { buildPalette } from "../logo-to-svg/lib/palette";
@@ -396,11 +396,8 @@ export default function ColorPaletteTool() {
         ))}
       </section>
 
-      <section className="flex flex-wrap items-center gap-2">
-        <CopyButton text={themesToCss(themes)} label="Copy CSS variables" className="py-2 text-sm" />
-        <CopyButton text={JSON.stringify({ palette: hexes, used, themes }, null, 2)} label="Copy JSON" className="py-2 text-sm" />
-        <span className="text-xs text-zinc-500">Your palette and colors are saved in this browser. The screenshot isn’t stored.</span>
-      </section>
+      <CodePanel css={themesToCss(themes)} json={JSON.stringify({ palette: hexes, used, themes }, null, 2)} />
+      <p className="text-xs text-zinc-500">Your palette and colors are saved in this browser. The screenshot isn’t stored.</p>
     </div>
   );
 }
@@ -639,5 +636,52 @@ function ColorSlot({ slot, pool, alignRight = false }: { slot: Slot; pool: PoolG
           document.body,
         )}
     </div>
+  );
+}
+
+/** Live, read-only view of the export, with a color chip beside every value. */
+function CodePanel({ css, json }: { css: string; json: string }) {
+  const [tab, setTab] = useState<"css" | "json">("css");
+  const code = tab === "css" ? css : json;
+
+  // Splits a line into text and color values so each color can show a chip.
+  const renderLine = (line: string) =>
+    line.split(/(#[0-9a-f]{6}\b|transparent)/gi).map((part, k) =>
+      /^#[0-9a-f]{6}$/i.test(part) || part === TRANSPARENT ? (
+        <span key={k} className="whitespace-nowrap">
+          <span className="mr-1 inline-block h-2.5 w-2.5 translate-y-px rounded-sm border border-black/20 align-baseline"
+            style={{ background: part === TRANSPARENT ? CHECKER : part }} aria-hidden />
+          <span className="text-emerald-700 dark:text-emerald-400">{part}</span>
+        </span>
+      ) : (
+        <span key={k}>{part}</span>
+      ),
+    );
+
+  return (
+    <section className="overflow-hidden rounded-xl border border-zinc-200 dark:border-zinc-800">
+      <div className="flex flex-wrap items-center gap-2 border-b border-zinc-200 bg-zinc-50 px-3 py-2 dark:border-zinc-800 dark:bg-zinc-900/50">
+        <div role="tablist" aria-label="Export format" className="inline-flex rounded-md border border-zinc-300 p-0.5 text-xs dark:border-zinc-700">
+          {(["css", "json"] as const).map((t) => (
+            <button key={t} type="button" role="tab" aria-selected={tab === t} onClick={() => setTab(t)}
+              className={`rounded px-2.5 py-1 font-medium ${tab === t ? "bg-blue-600 text-white" : "text-zinc-600 dark:text-zinc-400"}`}>
+              {t === "css" ? "CSS variables" : "JSON"}
+            </button>
+          ))}
+        </div>
+        <span className="text-xs text-zinc-500">Updates live as you change colors.</span>
+        <CopyButton key={tab} text={code} label={tab === "css" ? "Copy CSS" : "Copy JSON"} className="ml-auto py-1.5 text-xs" />
+      </div>
+      <pre aria-label={tab === "css" ? "CSS variables" : "JSON"} tabIndex={0}
+        className="max-h-80 overflow-auto bg-white p-3 font-mono text-xs leading-relaxed text-zinc-800 dark:bg-zinc-950 dark:text-zinc-200">
+        {/* One text flow with real newlines, so selecting and copying by hand gives exactly the code. */}
+        {code.split("\n").map((line, i) => (
+          <Fragment key={i}>
+            {i > 0 && "\n"}
+            {renderLine(line)}
+          </Fragment>
+        ))}
+      </pre>
+    </section>
   );
 }
