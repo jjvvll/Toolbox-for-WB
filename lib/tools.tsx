@@ -54,6 +54,20 @@ export const TOOLS: Tool[] = [
     ),
   },
   {
+    name: "Color Palette",
+    description: "Pick colors from a screenshot and try them on dark, light, and color-block layouts.",
+    href: "/color-palette",
+    accent: "bg-teal-100 text-teal-600 dark:bg-teal-500/15 dark:text-teal-400",
+    icon: (
+      <Icon>
+        <path d="M12 3a9 9 0 1 0 0 18c1.2 0 2-.8 2-1.9 0-.5-.2-.9-.5-1.3-.3-.3-.5-.7-.5-1.2 0-1.1.9-2 2-2h2.2A4.8 4.8 0 0 0 21 9.8C21 6 17 3 12 3" />
+        <circle cx="7.5" cy="11" r="1.2" />
+        <circle cx="10.5" cy="7" r="1.2" />
+        <circle cx="15" cy="7.5" r="1.2" />
+      </Icon>
+    ),
+  },
+  {
     name: "Video Compressor",
     description: "Shrink videos on your computer and save them next to the originals.",
     href: "/video-compressor",
