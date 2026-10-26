@@ -19,8 +19,181 @@
   }
 }
 
-body {
+html {
   background: var(--background);
+}
+
+/* Transparent so the fixed background art (components/anime-scene.tsx) shows through. */
+body {
+  background: transparent;
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
+}
+
+/* Rich-text editor (Notes tool) */
+.tiptap-content {
+  line-height: 1.65;
+  font-size: 0.95rem;
+}
+.tiptap-content > * + * {
+  margin-top: 0.6em;
+}
+.tiptap-content h1 {
+  font-size: 1.6em;
+  font-weight: 700;
+  line-height: 1.25;
+  margin-top: 1em;
+}
+.tiptap-content h2 {
+  font-size: 1.3em;
+  font-weight: 650;
+  line-height: 1.3;
+  margin-top: 0.9em;
+}
+.tiptap-content h3 {
+  font-size: 1.1em;
+  font-weight: 600;
+  margin-top: 0.8em;
+}
+.tiptap-content ul {
+  list-style: disc;
+  padding-left: 1.5em;
+}
+.tiptap-content ol {
+  list-style: decimal;
+  padding-left: 1.5em;
+}
+.tiptap-content li > p {
+  margin: 0;
+}
+.tiptap-content li + li {
+  margin-top: 0.2em;
+}
+/* Linked words stand out: blue, underlined, with a light tint. */
+.tiptap-content a {
+  color: #1d4ed8;
+  font-weight: 500;
+  text-decoration: underline;
+  text-decoration-color: rgb(37 99 235 / 0.5);
+  text-decoration-thickness: 1.5px;
+  text-underline-offset: 3px;
+  background: rgb(37 99 235 / 0.08);
+  border-radius: 3px;
+  padding: 0 2px;
+  cursor: pointer;
+  transition: background-color 0.15s, text-decoration-color 0.15s;
+}
+.tiptap-content a:hover {
+  background: rgb(37 99 235 / 0.16);
+  text-decoration-color: currentColor;
+}
+.tiptap-content blockquote {
+  border-left: 3px solid #d4d4d8;
+  padding-left: 1em;
+  color: #52525b;
+}
+.tiptap-content code {
+  font-family: var(--font-geist-mono), ui-monospace, monospace;
+  font-size: 0.85em;
+  background: rgb(0 0 0 / 0.06);
+  border-radius: 4px;
+  padding: 0.1em 0.35em;
+}
+.tiptap-content pre {
+  background: #18181b;
+  color: #f4f4f5;
+  border-radius: 8px;
+  padding: 0.8em 1em;
+  overflow-x: auto;
+}
+.tiptap-content pre code {
+  background: none;
+  padding: 0;
+  color: inherit;
+}
+.tiptap-content hr {
+  border: none;
+  border-top: 1px solid #e4e4e7;
+  margin: 1.2em 0;
+}
+.tiptap-content p.is-editor-empty:first-child::before {
+  content: attr(data-placeholder);
+  color: #a1a1aa;
+  float: left;
+  height: 0;
+  pointer-events: none;
+}
+
+@media (prefers-color-scheme: dark) {
+  .tiptap-content a {
+    color: #93c5fd;
+    text-decoration-color: rgb(147 197 253 / 0.5);
+    background: rgb(96 165 250 / 0.12);
+  }
+  .tiptap-content a:hover {
+    background: rgb(96 165 250 / 0.22);
+  }
+  .tiptap-content blockquote {
+    border-left-color: #3f3f46;
+    color: #a1a1aa;
+  }
+  .tiptap-content code {
+    background: rgb(255 255 255 / 0.1);
+  }
+  .tiptap-content pre {
+    background: #09090b;
+    border: 1px solid #27272a;
+  }
+  .tiptap-content hr {
+    border-top-color: #27272a;
+  }
+  .tiptap-content p.is-editor-empty:first-child::before {
+    color: #52525b;
+  }
+}
+
+/* Anime widget: new picture fades in over the previous one. */
+@keyframes anime-fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+.anime-fade-in {
+  animation: anime-fade-in 0.4s ease-out;
+}
+@media (prefers-reduced-motion: reduce) {
+  .anime-fade-in {
+    animation: none;
+  }
+}
+
+/* Site-wide background art */
+.glass-panel {
+  background: color-mix(in srgb, var(--background) 80%, transparent);
+  border: 1px solid color-mix(in srgb, var(--foreground) 10%, transparent);
+  -webkit-backdrop-filter: blur(18px) saturate(1.4);
+  backdrop-filter: blur(18px) saturate(1.4);
+}
+/* Strong on the left where content sits, lighter on the right so the art shows. */
+.anime-veil {
+  background: linear-gradient(
+    to right,
+    color-mix(in srgb, var(--background) 92%, transparent) 0%,
+    color-mix(in srgb, var(--background) 82%, transparent) 45%,
+    color-mix(in srgb, var(--background) var(--veil-right, 45%), transparent) 100%
+  );
+}
+.anime-sharp {
+  -webkit-mask-image: linear-gradient(to right, transparent, black 35%), linear-gradient(to bottom, black 70%, transparent);
+  -webkit-mask-composite: source-in;
+  mask-image: linear-gradient(to right, transparent, black 35%), linear-gradient(to bottom, black 70%, transparent);
+  mask-composite: intersect;
+}
+@media (max-width: 767px) {
+  .anime-veil {
+    background: color-mix(in srgb, var(--background) 80%, transparent);
+  }
 }
