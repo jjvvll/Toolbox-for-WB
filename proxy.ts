@@ -26,6 +26,6 @@ export async function proxy(request: NextRequest) {
 }
 
 export const config = {
-  // Everything except build assets, which the login page itself needs.
-  matcher: ["/((?!_next/static|_next/image|favicon.ico).*)"],
+  // Everything except build assets and site icons, which the login page itself needs.
+  matcher: ["/((?!_next/static|_next/image|favicon.ico|icon.svg|apple-icon.png).*)"],
 };
