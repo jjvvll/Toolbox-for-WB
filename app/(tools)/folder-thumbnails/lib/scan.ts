@@ -138,17 +138,17 @@ export function formatBytes(n: number): string {
 }
 
 /**
- * "<name without extension>-cover.<ext>". If two sources in the same folder share
+ * "<name without extension><suffix>.<ext>". If two sources in the same folder share
  * a base name (clip.mp4 + clip.pdf), the extension is kept to avoid clashes.
  */
-export function coverNames(files: MediaFile[], ext: string): Map<string, string> {
+export function coverNames(files: MediaFile[], ext: string, suffix = ""): Map<string, string> {
   const byDirBase = new Map<string, number>();
   const key = (f: MediaFile) => `${f.path.slice(0, f.path.length - f.name.length)}|${f.name.replace(/\.[^.]+$/, "").toLowerCase()}`;
   for (const f of files) byDirBase.set(key(f), (byDirBase.get(key(f)) ?? 0) + 1);
   const names = new Map<string, string>();
   for (const f of files) {
     const base = (byDirBase.get(key(f)) ?? 0) > 1 ? f.name : f.name.replace(/\.[^.]+$/, "");
-    names.set(f.id, `${base}-cover.${ext}`);
+    names.set(f.id, `${base}${suffix}.${ext}`);
   }
   return names;
 }

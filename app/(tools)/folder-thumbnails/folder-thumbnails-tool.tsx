@@ -70,6 +70,7 @@ export default function FolderThumbnailsTool() {
   const [capture, setCapture] = useState<CapturePoint>("10%");
   const [width, setWidth] = useState(1280);
   const [format, setFormat] = useState<CoverFormat>("image/jpeg");
+  const [addSuffix, setAddSuffix] = useState(false);
   const options: ThumbOptions = { width, format, quality: QUALITY, capture };
   const ext = FORMATS.find((f) => f.value === format)!.ext;
 
@@ -242,7 +243,7 @@ export default function FolderThumbnailsTool() {
   const finished = done.length + failed;
   const processing = finished < items.length;
   const stale = done.some((i) => i.optsKey !== keyOf(options));
-  const names = coverNames(items, ext);
+  const names = coverNames(items, ext, addSuffix ? "-cover" : "");
   const canSaveToFolder = !!root && typeof root.requestPermission === "function" && done.length > 0;
 
   async function downloadZip() {
@@ -266,11 +267,29 @@ export default function FolderThumbnailsTool() {
     }
   }
 
+  async function saveOne(it: Item) {
+    if (!root?.requestPermission || !it.dir || !it.blob) return;
+    if ((await root.requestPermission({ mode: "readwrite" })) !== "granted") {
+      setMessage({ kind: "error", text: "Write permission was not granted, so nothing was saved." });
+      return;
+    }
+    const name = names.get(it.id)!;
+    try {
+      const handle = await it.dir.getFileHandle(name, { create: true });
+      const writable = await handle.createWritable();
+      await writable.write(it.blob);
+      await writable.close();
+      setMessage({ kind: "ok", text: `Saved ${name} next to ${it.name}.` });
+    } catch (err) {
+      setMessage({ kind: "error", text: `Couldn't save ${name}: ${err instanceof Error ? err.message : err}` });
+    }
+  }
+
   async function saveIntoFolder() {
     if (!root?.requestPermission) return;
     const ok = window.confirm(
       `Write ${done.length} thumbnail${done.length === 1 ? "" : "s"} into “${root.name}”, next to each source file?\n\n` +
-        `Each is named <file>-cover.${ext}. Existing files with those names are replaced.`,
+        `Each is named like its source file (<file>${addSuffix ? "-cover" : ""}.${ext}). Existing files with those names are replaced.`,
     );
     if (!ok) return;
     if ((await root.requestPermission({ mode: "readwrite" })) !== "granted") {
@@ -359,6 +378,10 @@ export default function FolderThumbnailsTool() {
           </select>
         </label>
       </div>
+      <label className="-mt-2 flex items-center gap-2 text-xs text-zinc-500">
+        <input type="checkbox" checked={addSuffix} onChange={(e) => setAddSuffix(e.target.checked)} />
+        Add “-cover” to thumbnail names (otherwise they match the source file’s name)
+      </label>
       {!supportsDirectoryPicker() && (
         <p className="-mt-2 text-xs text-zinc-500">
           Your browser uses the basic folder picker, so “Save thumbnails into the folder” isn’t available. Use Chrome
@@ -429,6 +452,7 @@ export default function FolderThumbnailsTool() {
               item={it}
               coverName={names.get(it.id)!}
               onRetry={() => regenerate((x) => x.id === it.id)}
+              onSaveHere={canSaveToFolder && it.dir ? () => saveOne(it) : undefined}
             />
           ))}
         </ul>
@@ -479,7 +503,17 @@ function ScanSummary({ items, report }: { items: Item[]; report: ScanReport }) {
   );
 }
 
-function Card({ item, coverName, onRetry }: { item: Item; coverName: string; onRetry: () => void }) {
+function Card({
+  item,
+  coverName,
+  onRetry,
+  onSaveHere,
+}: {
+  item: Item;
+  coverName: string;
+  onRetry: () => void;
+  onSaveHere?: () => void;
+}) {
   const dir = item.path.slice(0, item.path.length - item.name.length);
   return (
     <li className="flex flex-col overflow-hidden rounded-xl border border-zinc-200 bg-background [contain-intrinsic-size:auto_320px] [content-visibility:auto] dark:border-zinc-800">
@@ -534,14 +568,26 @@ function Card({ item, coverName, onRetry }: { item: Item; coverName: string; onR
             {item.width && ` · ${item.width}×${item.height}`}
           </span>
           {item.status === "done" && item.blob && (
-            <button
-              type="button"
-              onClick={() => saveBlob(item.blob!, coverName)}
-              title={`Download ${coverName}`}
-              className="rounded-md bg-blue-600 px-2.5 py-1 text-xs font-medium text-white hover:bg-blue-700"
-            >
-              Download
-            </button>
+            <div className="flex gap-1.5">
+              {onSaveHere && (
+                <button
+                  type="button"
+                  onClick={onSaveHere}
+                  title={`Save ${coverName} in the same folder as ${item.name}`}
+                  className="rounded-md border border-zinc-300 px-2.5 py-1 text-xs font-medium hover:bg-zinc-100 dark:border-zinc-700 dark:hover:bg-zinc-900"
+                >
+                  Save
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={() => saveBlob(item.blob!, coverName)}
+                title={`Download ${coverName}`}
+                className="rounded-md bg-blue-600 px-2.5 py-1 text-xs font-medium text-white hover:bg-blue-700"
+              >
+                Download
+              </button>
+            </div>
           )}
         </div>
       </div>

@@ -45,3 +45,18 @@ export function titleMatcher(query: string, videoId?: string | null) {
     (videoId != null && v.id === videoId) ||
     (words.length > 0 && words.every((w) => normalize(v.title).includes(w)));
 }
+
+/** A video title made safe to use as a file name (no path or reserved characters). */
+export function safeFileName(title: string, fallback = "thumbnail"): string {
+  const name = title
+    .replace(/[\/:*?"<>|\u0000-\u001f]/g, " ")
+    .replace(/\s+/g, " ")
+    .replace(/^[.\s]+|[.\s]+$/g, "")
+    .slice(0, 150)
+    .trim();
+  return name || fallback;
+}
+
+/** Same-origin URL that downloads a video's best thumbnail, named after its title. */
+export const thumbnailDownloadUrl = (id: string, title: string | null) =>
+  `/api/thumbnail?${new URLSearchParams({ id, ...(title ? { name: title } : {}) })}`;

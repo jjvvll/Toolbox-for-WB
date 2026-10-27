@@ -13,6 +13,11 @@ type Item = {
   height?: number;
   pageCount?: number;
   error?: string;
+  /** Folder the PDF came from; only when it was opened with the folder picker. */
+  dir?: FileSystemDirectoryHandle;
+  /** Set once the thumbnail has been written next to the PDF. */
+  savedAs?: string;
+  blob?: Blob;
 };
 
 const EXTENSIONS: Record<CoverFormat, string> = {
@@ -23,6 +28,25 @@ const EXTENSIONS: Record<CoverFormat, string> = {
 
 function outputName(file: File, format: CoverFormat) {
   return `${file.name.replace(/\.pdf$/i, "")}-cover.${EXTENSIONS[format]}`;
+}
+
+const supportsFolders = () =>
+  typeof window !== "undefined" && typeof window.showDirectoryPicker === "function";
+
+/** Every PDF in a folder and its subfolders, with the folder that holds each. */
+async function collectPdfs(dir: FileSystemDirectoryHandle, out: { file: File; dir: FileSystemDirectoryHandle }[]) {
+  for await (const entry of dir.values()) {
+    if (entry.name.startsWith(".")) continue;
+    if (entry.kind === "directory") {
+      await collectPdfs(entry as FileSystemDirectoryHandle, out);
+    } else if (/.pdf$/i.test(entry.name)) {
+      try {
+        out.push({ file: await (entry as FileSystemFileHandle).getFile(), dir });
+      } catch {
+        // Unreadable (e.g. cloud-only) files are skipped.
+      }
+    }
+  }
 }
 
 function triggerDownload(url: string, filename: string) {
@@ -37,6 +61,7 @@ export default function PdfCoverTool() {
   const [scale, setScale] = useState(2);
   const [format, setFormat] = useState<CoverFormat>("image/png");
   const [dragging, setDragging] = useState(false);
+  const [notice, setNotice] = useState<{ kind: "ok" | "error"; text: string } | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const queue = useRef(Promise.resolve());
   const urls = useRef(new Set<string>());
@@ -50,14 +75,67 @@ export default function PdfCoverTool() {
     setItems((prev) => prev.map((it) => (it.id === id ? { ...it, ...patch } : it)));
 
   function addFiles(fileList: FileList | null) {
-    const pdfs = Array.from(fileList ?? []).filter(
-      (f) => f.type === "application/pdf" || /\.pdf$/i.test(f.name),
+    addEntries(
+      Array.from(fileList ?? [])
+        .filter((f) => f.type === "application/pdf" || /\.pdf$/i.test(f.name))
+        .map((file) => ({ file })),
     );
-    if (!pdfs.length) return;
+  }
 
-    const added = pdfs.map((file) => ({
+  async function chooseFolder() {
+    let handle: FileSystemDirectoryHandle;
+    try {
+      handle = await window.showDirectoryPicker!({ id: "pdf-cover", mode: "readwrite" });
+    } catch {
+      return; // picker cancelled
+    }
+    setNotice(null);
+    const found: { file: File; dir: FileSystemDirectoryHandle }[] = [];
+    try {
+      await collectPdfs(handle, found);
+    } catch (err) {
+      setNotice({ kind: "error", text: `Couldn't read the whole folder: ${err instanceof Error ? err.message : err}` });
+    }
+    if (!found.length) setNotice({ kind: "error", text: `No PDFs found in “${handle.name}”.` });
+    addEntries(found);
+  }
+
+  async function saveNextToPdf(targets: Item[]) {
+    const withDir = targets.filter((it) => it.dir && it.blob && it.status === "done");
+    if (!withDir.length) return;
+    let saved = 0;
+    let firstError: string | null = null;
+    for (const it of withDir) {
+      const name = outputName(it.file, it.format);
+      try {
+        // Asks for write access on first use; this runs inside a click, as required.
+        if ((await it.dir!.requestPermission?.({ mode: "readwrite" })) === "denied") {
+          throw new Error("Write permission was not granted.");
+        }
+        const handle = await it.dir!.getFileHandle(name, { create: true });
+        const writable = await handle.createWritable();
+        await writable.write(it.blob!);
+        await writable.close();
+        update(it.id, { savedAs: name });
+        saved++;
+      } catch (err) {
+        firstError ??= `${it.file.name}: ${err instanceof Error ? err.message : err}`;
+      }
+    }
+    setNotice(
+      firstError
+        ? { kind: "error", text: `Saved ${saved}; ${withDir.length - saved} failed. First error: ${firstError}` }
+        : { kind: "ok", text: `Saved ${saved} thumbnail${saved === 1 ? "" : "s"} next to the source PDF${saved === 1 ? "" : "s"}.` },
+    );
+  }
+
+  function addEntries(entries: { file: File; dir?: FileSystemDirectoryHandle }[]) {
+    if (!entries.length) return;
+
+    const added = entries.map(({ file, dir }) => ({
       id: crypto.randomUUID(),
       file,
+      dir,
       format,
       status: "queued" as const,
     }));
@@ -72,7 +150,7 @@ export default function PdfCoverTool() {
           const { blob, ...info } = await renderPdfCover(item.file, options);
           const url = URL.createObjectURL(blob);
           urls.current.add(url);
-          update(item.id, { status: "done", url, ...info });
+          update(item.id, { status: "done", url, blob, ...info });
         } catch (err) {
           update(item.id, {
             status: "error",
@@ -110,6 +188,7 @@ export default function PdfCoverTool() {
   }
 
   const doneCount = items.filter((i) => i.status === "done").length;
+  const saveable = items.filter((i) => i.status === "done" && i.dir);
   const busy = items.some((i) => i.status === "queued" || i.status === "rendering");
 
   return (
@@ -141,6 +220,15 @@ export default function PdfCoverTool() {
         >
           Choose PDFs
         </button>
+        {supportsFolders() && (
+          <button
+            type="button"
+            onClick={chooseFolder}
+            className="rounded-lg border border-zinc-300 px-4 py-2 text-sm font-medium hover:bg-zinc-100 dark:border-zinc-700 dark:hover:bg-zinc-900"
+          >
+            📁 Choose folder (lets you save next to each PDF)
+          </button>
+        )}
         <input
           ref={inputRef}
           type="file"
@@ -184,6 +272,15 @@ export default function PdfCoverTool() {
 
         {items.length > 0 && (
           <div className="ml-auto flex gap-2">
+            {saveable.length > 0 && (
+              <button
+                type="button"
+                onClick={() => saveNextToPdf(saveable)}
+                className="rounded-lg border border-zinc-300 px-3 py-1.5 font-medium hover:bg-zinc-100 dark:border-zinc-700 dark:hover:bg-zinc-900"
+              >
+                Save all next to PDFs ({saveable.length})
+              </button>
+            )}
             <button
               type="button"
               onClick={downloadAll}
@@ -203,6 +300,19 @@ export default function PdfCoverTool() {
           </div>
         )}
       </div>
+
+      {notice && (
+        <p
+          role="status"
+          className={`rounded-lg border px-3 py-2 text-sm ${
+            notice.kind === "ok"
+              ? "border-emerald-200 bg-emerald-50 text-emerald-800 dark:border-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-300"
+              : "border-red-200 bg-red-50 text-red-700 dark:border-red-900 dark:bg-red-950/40 dark:text-red-400"
+          }`}
+        >
+          {notice.text}
+        </p>
+      )}
 
       {items.length > 0 && (
         <ul className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
@@ -239,6 +349,16 @@ export default function PdfCoverTool() {
                     </p>
                   )}
                 </div>
+                {it.status === "done" && it.dir && (
+                  <button
+                    type="button"
+                    onClick={() => saveNextToPdf([it])}
+                    title={`Save ${outputName(it.file, it.format)} in the same folder as the PDF`}
+                    className="rounded-md border border-zinc-300 px-3 py-1.5 text-xs font-medium hover:bg-zinc-100 dark:border-zinc-700 dark:hover:bg-zinc-900"
+                  >
+                    {it.savedAs ? "Saved ✓" : "Save"}
+                  </button>
+                )}
                 {it.status === "done" && it.url && (
                   <button
                     type="button"

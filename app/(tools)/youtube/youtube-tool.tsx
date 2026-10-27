@@ -5,7 +5,7 @@ import CopyButton from "@/components/copy-button";
 import { errorClass, inputClass, primaryButtonClass } from "@/components/ui";
 import type { VideoResponse } from "@/app/api/video/route";
 import { parseYouTubeVideoId } from "@/lib/parse-links";
-import { autoplayUrl, watchUrl } from "@/lib/youtube";
+import { autoplayUrl, thumbnailDownloadUrl, watchUrl } from "@/lib/youtube";
 
 type Video = {
   id: string;
@@ -115,7 +115,16 @@ export default function YouTubeTool() {
                   {watchUrl(video.id)}
                 </a>
               </div>
-              {video.title && <CopyButton text={video.title} label="Copy title" className="shrink-0" />}
+              <div className="flex shrink-0 gap-2">
+                <a
+                  href={thumbnailDownloadUrl(video.id, video.title)}
+                  download
+                  className="rounded-md border border-zinc-300 px-3 py-1.5 text-xs font-medium hover:bg-zinc-100 dark:border-zinc-700 dark:hover:bg-zinc-900"
+                >
+                  Download thumbnail
+                </a>
+                {video.title && <CopyButton text={video.title} label="Copy title" />}
+              </div>
             </div>
 
             <div>

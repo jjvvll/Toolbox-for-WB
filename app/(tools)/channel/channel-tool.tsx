@@ -8,6 +8,8 @@ import type { ChannelSearchResponse } from "@/app/api/channel/search/route";
 import { parseYouTubeVideoId } from "@/lib/parse-links";
 import {
   autoplayUrl,
+  safeFileName,
+  thumbnailDownloadUrl,
   titleMatcher,
   watchUrl,
   type ChannelVideo,
@@ -55,6 +57,47 @@ function sortVideos(videos: ChannelVideo[], sort: Sort) {
   return sort === "oldest" ? sorted.reverse() : sorted;
 }
 
+/** Fetches every thumbnail and saves them as one ZIP, each named after its video title. */
+async function downloadThumbnailsZip(
+  videos: ChannelVideo[],
+  zipName: string,
+  onProgress: (done: number) => void,
+) {
+  const { default: JSZip } = await import("jszip");
+  const zip = new JSZip();
+  const used = new Set<string>();
+  let failed = 0;
+  let done = 0;
+  const queue = [...videos];
+  // A few at a time keeps the server and browser responsive on big lists.
+  await Promise.all(
+    Array.from({ length: 4 }, async () => {
+      for (let v = queue.shift(); v; v = queue.shift()) {
+        try {
+          const res = await fetch(thumbnailDownloadUrl(v.id, v.title));
+          if (!res.ok) throw new Error();
+          let name = safeFileName(v.title, v.id);
+          if (used.has(name.toLowerCase())) name = `${name} (${v.id})`;
+          used.add(name.toLowerCase());
+          zip.file(`${name}.jpg`, await res.blob());
+        } catch {
+          failed++;
+        }
+        onProgress(++done);
+      }
+    }),
+  );
+  if (failed === videos.length) throw new Error("No thumbnails could be downloaded.");
+  const blob = await zip.generateAsync({ type: "blob", compression: "STORE" });
+  const href = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = href;
+  a.download = `${safeFileName(zipName, "thumbnails")}.zip`;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(href), 1000);
+  return failed;
+}
+
 export default function ChannelTool() {
   const [query, setQuery] = useState("");
   const [data, setData] = useState<Omit<ChannelResponse, "long" | "shorts"> | null>(null);
@@ -65,6 +108,7 @@ export default function ChannelTool() {
   const [error, setError] = useState<string | null>(null);
   const [filter, setFilter] = useState("");
   const [search, setSearch] = useState<ChannelSearch | null>(null);
+  const [zipStatus, setZipStatus] = useState<string | null>(null);
   // Bumped on each new channel so responses for an old one are ignored.
   const generation = useRef(0);
 
@@ -157,6 +201,21 @@ export default function ChannelTool() {
   const visible = sortVideos(matcher ? loaded.filter(matcher) : loaded, sort);
   const otherTab: Tab = tab === "long" ? "shorts" : "long";
   const otherMatches = matcher && pages ? pages[otherTab].videos.filter(matcher).length : 0;
+
+  async function saveAllThumbnails() {
+    setError(null);
+    setZipStatus(`Downloading 0 of ${visible.length}…`);
+    try {
+      const failed = await downloadThumbnailsZip(visible, `${data?.channel.title ?? "channel"} thumbnails`, (n) =>
+        setZipStatus(`Downloading ${n} of ${visible.length}…`),
+      );
+      if (failed) setError(`${failed} thumbnail${failed === 1 ? "" : "s"} couldn't be downloaded and ${failed === 1 ? "was" : "were"} left out.`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setZipStatus(null);
+    }
+  }
 
   function onSearchSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -271,7 +330,16 @@ export default function ChannelTool() {
 
           {visible.length > 0 ? (
             <>
-              <div className="flex justify-end">
+              <div className="flex flex-wrap items-center justify-end gap-2">
+                {zipStatus && <span className="text-xs text-zinc-500">{zipStatus}</span>}
+                <button
+                  type="button"
+                  onClick={saveAllThumbnails}
+                  disabled={!!zipStatus}
+                  className={`${secondaryButtonClass} px-3 py-1.5 text-xs`}
+                >
+                  Download {visible.length} thumbnails (ZIP)
+                </button>
                 <CopyButton
                   text={visible.map((v) => watchUrl(v.id)).join("\n")}
                   label={`Copy ${visible.length} links`}
@@ -421,6 +489,13 @@ function VideoGrid({ videos, vertical = false }: { videos: ChannelVideo[]; verti
             <div className="mt-auto flex flex-wrap gap-2">
               <CopyButton text={watchUrl(v.id)} label="Link" />
               <CopyButton text={v.title} label="Title" />
+              <a
+                href={thumbnailDownloadUrl(v.id, v.title)}
+                download
+                className="rounded-md border border-zinc-300 px-3 py-1.5 text-xs font-medium hover:bg-zinc-100 dark:border-zinc-700 dark:hover:bg-zinc-900"
+              >
+                Thumbnail
+              </a>
               {v.description && <CopyButton text={v.description} label="Description" />}
               <CopyButton text={autoplayUrl(v.id, true)} label="Autoplay (muted)" />
               <CopyButton text={autoplayUrl(v.id, false)} label="Autoplay (sound)" />
