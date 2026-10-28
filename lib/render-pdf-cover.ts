@@ -9,8 +9,8 @@ let pdfjsPromise: Promise<{ pdfjs: typeof PdfJs; worker: PdfJs.PDFWorker }> | nu
 // down when a document is destroyed, so several PDFs can render at once.
 function loadPdfJs() {
   if (!pdfjsPromise) {
-    pdfjsPromise = import("pdfjs-dist").then((pdfjs) => {
-      const port = new Worker(new URL("pdfjs-dist/build/pdf.worker.min.mjs", import.meta.url), {
+    pdfjsPromise = import("pdfjs-dist/legacy/build/pdf.mjs").then((pdfjs) => {
+      const port = new Worker(new URL("pdfjs-dist/legacy/build/pdf.worker.min.mjs", import.meta.url), {
         type: "module",
       });
       return { pdfjs, worker: pdfjs.PDFWorker.create({ port }) };
