@@ -4,6 +4,10 @@ export const TRANSPARENT = "transparent";
 
 export type ButtonColors = { border: string; fill: string; text: string };
 export type ThemeId = "dark" | "light" | "block";
+/** Colors for the property listing card shown in every container. */
+export type PropertyColors = { cardBg: string; cardText: string; tagBg: string; tagText: string };
+export const PROPERTY_DEFAULTS: PropertyColors = { cardBg: "#222222", cardText: "#ffffff", tagBg: "#9ca3af", tagText: "#111111" };
+
 export type Theme = {
   id: ThemeId;
   label: string;
@@ -11,6 +15,7 @@ export type Theme = {
   headline: string;
   text: string;
   button: { normal: ButtonColors; hover: ButtonColors };
+  property?: PropertyColors;
 };
 
 export const THEME_LABELS: Record<ThemeId, string> = { dark: "Dark", light: "Light", block: "Color block" };
@@ -119,19 +124,28 @@ export function paletteNotes(palette: string[], mode: PoolMode): string[] {
  * and, in "tints" mode, softened body text). Buttons are solid, turning into an outline on hover.
  * Works for any palette size, including 1 or 2 colors.
  */
-export function autoThemes(palette: string[], mode: PoolMode = "neutrals"): Theme[] {
+export function autoThemes(palette: string[], mode: PoolMode = "neutrals", variant = 0): Theme[] {
   const brand = palette.length ? palette : ["#2563eb"];
   const pool = [...new Set(colorPool(brand, mode).flatMap((g) => g.colors))];
   const byLum = [...pool].sort((a, b) => luminance(a) - luminance(b));
   // Backgrounds: prefer the client's own colors, then tints/shades of them, and only then pure black/white.
   const ownByLum = [...brand].sort((a, b) => luminance(a) - luminance(b));
   const derived = byLum.filter((c) => !NEUTRALS.includes(c) && !brand.includes(c));
-  const darkest = ownByLum.find((c) => luminance(c) < 0.06) ?? derived.find((c) => luminance(c) < 0.06) ?? byLum[0];
-  const lightest =
-    [...ownByLum].reverse().find((c) => luminance(c) > 0.8) ?? [...derived].reverse().find((c) => luminance(c) > 0.8) ?? byLum[byLum.length - 1];
+  // Each candidate list starts with the default pick; `variant` rotates through the alternatives.
+  const pick = <T,>(list: T[]) => list[variant % list.length];
+  const unique = (list: string[]) => [...new Set(list)];
+  const darkest = pick(unique([
+    ownByLum.find((c) => luminance(c) < 0.06) ?? derived.find((c) => luminance(c) < 0.06) ?? byLum[0],
+    ...ownByLum.filter((c) => luminance(c) < 0.2), ...derived.filter((c) => luminance(c) < 0.2), byLum[0],
+  ]));
+  const lightest = pick(unique([
+    [...ownByLum].reverse().find((c) => luminance(c) > 0.8) ?? [...derived].reverse().find((c) => luminance(c) > 0.8) ?? byLum[byLum.length - 1],
+    ...[...ownByLum].reverse().filter((c) => luminance(c) > 0.6), ...[...derived].reverse().filter((c) => luminance(c) > 0.6), byLum[byLum.length - 1],
+  ]));
   // The accent: the most colorful palette color, preferring ones that aren't just near-black/white.
-  const accent =
-    [...brand].sort((a, b) => chroma(b) - chroma(a) || Math.abs(luminance(a) - 0.4) - Math.abs(luminance(b) - 0.4))[0];
+  const accent = pick(
+    [...brand].sort((a, b) => chroma(b) - chroma(a) || Math.abs(luminance(a) - 0.4) - Math.abs(luminance(b) - 0.4)),
+  );
 
   const others = (x: string) => pool.filter((c) => c !== x);
   const textOn = (bg: string) => bestOn(bg, others(bg).length ? others(bg) : [bg]);
@@ -145,21 +159,62 @@ export function autoThemes(palette: string[], mode: PoolMode = "neutrals"): Them
   function buttonFor(bg: string): Theme["button"] {
     // Fill: the most colorful palette color that stands out from the background; else the text color.
     const fill =
+      (contrast(accent, bg) >= 1.5 ? accent : undefined) ??
       [...brand].filter((c) => c !== bg && contrast(c, bg) >= 1.5).sort((a, b) => chroma(b) - chroma(a))[0] ?? textOn(bg);
-    const normal: ButtonColors = { border: fill, fill, text: textOn(fill) };
+    const white = pool.find((c) => c === "#ffffff") ?? textOn(fill);
 
-    // Default hover: solid button turns into an outline. The fill clears to transparent, the border keeps
-    // the button color, and the label uses the button color too when it reads on the background.
+    // House style, by the button's own color. Dark button: border and fill in the color, white text; hover clears
+    // the fill and the text takes the color. Light button: the reverse, with dark text on the fill.
+    if (fill === accent) {
+      const isDark = luminance(accent) < 0.4;
+      const label = isDark ? white : (pool.find((c) => c === "#000000") ?? textOn(accent));
+      const hoverText = contrast(accent, bg) >= 3 ? accent : textOn(bg);
+      return {
+        normal: { border: accent, fill: accent, text: label },
+        hover: { border: accent, fill: TRANSPARENT, text: hoverText },
+      };
+    }
+
+    // Fallback (e.g. the accent is the background): solid button turning into an outline on hover.
+    const normal: ButtonColors = { border: fill, fill, text: textOn(fill) };
     const hover: ButtonColors = { border: fill, fill: TRANSPARENT, text: contrast(fill, bg) >= 3 ? fill : textOn(bg) };
     return { normal, hover };
   }
 
+  /** Labels on a solid color: white or black when allowed (like the button label), else the most readable color. */
+  const labelOn = (bg: string) => {
+    const bw = pool.filter((c) => NEUTRALS.includes(c));
+    return bw.length ? bestOn(bg, bw) : textOn(bg);
+  };
+
+  /**
+   * Property card: a card that stands apart from the container (a light card on dark, a dark card on light,
+   * whichever reads more on a color block), its most readable text, and an accent-colored tag on the photo.
+   */
+  function propertyFor(bg: string): PropertyColors {
+    // Colors that stand apart from the container, darkest first.
+    const candidates = byLum.filter((c) => c !== bg && contrast(c, bg) >= 1.5);
+    const ends = [darkest, lightest].filter((c) => candidates.includes(c));
+    const cardBg = !candidates.length
+      ? textOn(bg)
+      : luminance(bg) < 0.2
+        ? (candidates.includes(lightest) ? lightest : candidates[candidates.length - 1])
+        : luminance(bg) > 0.6
+          ? (candidates.includes(darkest) ? darkest : candidates[0])
+          : bestOn(bg, ends.length ? ends : candidates);
+    const card = cardBg;
+    const tagBg =
+      [accent, ...[...brand].sort((a, b) => chroma(b) - chroma(a))].find((c) => c !== card && contrast(c, card) >= 1.5) ??
+      textOn(card);
+    return { cardBg: card, cardText: textOn(card), tagBg, tagText: labelOn(tagBg) };
+  }
+
   const theme = (id: ThemeId, bg: string): Theme => ({
-    id, label: THEME_LABELS[id], bg, headline: textOn(bg), text: bodyOn(bg), button: buttonFor(bg),
+    id, label: THEME_LABELS[id], bg, headline: textOn(bg), text: bodyOn(bg), button: buttonFor(bg), property: propertyFor(bg),
   });
 
   // Color block: the accent, unless it's the same as the dark/light background (e.g. a black & white palette).
-  const blockBg = [accent, ...brand].find((c) => c !== darkest && c !== lightest) ?? accent;
+  const blockBg = pick([accent, ...brand].filter((c) => c !== darkest && c !== lightest).concat(accent));
   return [theme("dark", darkest), theme("light", lightest), theme("block", blockBg)];
 }
 
@@ -178,6 +233,14 @@ export function themesToCss(themes: Theme[]): string {
         `  --button-border-hover: ${h.border};`,
         `  --button-fill-hover: ${h.fill};`,
         `  --button-text-hover: ${h.text};`,
+        ...(t.property
+          ? [
+              `  --property-card-bg: ${t.property.cardBg};`,
+              `  --property-card-text: ${t.property.cardText};`,
+              `  --property-tag-bg: ${t.property.tagBg};`,
+              `  --property-tag-text: ${t.property.tagText};`,
+            ]
+          : []),
         `}`,
       ].join("\n");
     })

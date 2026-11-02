@@ -6,6 +6,7 @@ import CopyButton from "@/components/copy-button";
 import { buildPalette } from "../logo-to-svg/lib/palette";
 import {
   POOL_MODES,
+  PROPERTY_DEFAULTS,
   TRANSPARENT,
   autoThemes,
   colorPool,
@@ -19,8 +20,33 @@ import {
   type ButtonColors,
   type PoolGroup,
   type PoolMode,
+  type PropertyColors,
   type Theme,
 } from "./lib/color";
+import {
+  DEFAULT_FONT,
+  FONT_CATEGORIES,
+  FONT_CATEGORY_LABELS,
+  FONT_PAIRS,
+  cssFamily,
+  fontsToCss,
+  googleFontsUrl,
+  pairFor,
+  type FontChoice,
+  type FontPair,
+} from "./lib/fonts";
+
+/** Loads Google Fonts stylesheets for the given pairs (once per URL) while the component is mounted. */
+function useGoogleFonts(pairs: FontPair[]) {
+  const href = googleFontsUrl(pairs);
+  useEffect(() => {
+    if (document.head.querySelector(`link[href="${href}"]`)) return;
+    const link = document.createElement("link");
+    link.rel = "stylesheet";
+    link.href = href;
+    document.head.appendChild(link);
+  }, [href]);
+}
 
 /** `active: false` keeps a color in the palette without using it for styling. */
 type Swatch = { hex: string; share?: number; active?: boolean };
@@ -28,7 +54,7 @@ type Swatch = { hex: string; share?: number; active?: boolean };
 /** The colors used for styling: every palette color that hasn't been switched off. */
 const activeHex = (list: Swatch[]) => list.filter((s) => s.active !== false).map((s) => s.hex);
 type Sample = { headline: string; text: string; button: string };
-type Saved = { palette: Swatch[]; themes: Theme[]; sample: Sample; customized: boolean; mode?: PoolMode };
+type Saved = { palette: Swatch[]; themes: Theme[]; sample: Sample; customized: boolean; mode?: PoolMode; font?: FontChoice };
 
 const STORAGE_KEY = "color-palette:v1";
 const SAMPLE: Sample = {
@@ -86,24 +112,32 @@ export default function ColorPaletteTool() {
   const [count, setCount] = useState(8);
   const [palette, setPalette] = useState<Swatch[]>(saved?.palette ?? []);
   const [mode, setMode] = useState<PoolMode>(saved?.mode ?? "neutrals");
-  const [themes, setThemes] = useState<Theme[]>(saved?.themes ?? autoThemes([], saved?.mode ?? "neutrals"));
+  const [themes, setThemes] = useState<Theme[]>(() => {
+    const auto = autoThemes(activeHex(saved?.palette ?? []), saved?.mode ?? "neutrals");
+    // Themes saved before every container had a property card get auto-assigned card colors.
+    return saved?.themes?.map((t) => (t.property ? t : { ...t, property: auto.find((a) => a.id === t.id)?.property })) ?? auto;
+  });
   const [customized, setCustomized] = useState(saved?.customized ?? false);
   const [sample, setSample] = useState<Sample>(saved?.sample ?? SAMPLE);
+  const [font, setFont] = useState<FontChoice>(saved?.font ?? DEFAULT_FONT);
+  const fonts = pairFor(font);
+  useGoogleFonts([fonts]);
   const [dragging, setDragging] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [picked, setPicked] = useState<string | null>(null);
   const [hexInput, setHexInput] = useState("");
   const fileInput = useRef<HTMLInputElement>(null);
   const fullCanvas = useRef<CanvasRenderingContext2D | null>(null);
+  const autoVariant = useRef(0);
 
   // Remember the palette and assignments (not the screenshot) in this browser.
   useEffect(() => {
     try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify({ palette, themes, sample, customized, mode } satisfies Saved));
+      localStorage.setItem(STORAGE_KEY, JSON.stringify({ palette, themes, sample, customized, mode, font } satisfies Saved));
     } catch {
       // storage unavailable; fine
     }
-  }, [palette, themes, sample, customized, mode]);
+  }, [palette, themes, sample, customized, mode, font]);
 
   const applyPalette = useCallback((next: Swatch[], keepAssignments: boolean) => {
     setPalette(next);
@@ -234,63 +268,48 @@ export default function ColorPaletteTool() {
 
   return (
     <div className="mt-6 flex flex-col gap-6">
-      {/* 1. Screenshot + palette */}
-      <section className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_20rem]">
-        <div
-          onDragOver={(e) => { e.preventDefault(); setDragging(true); }}
-          onDragLeave={() => setDragging(false)}
-          onDrop={(e) => {
-            e.preventDefault();
-            setDragging(false);
-            const f = e.dataTransfer.files[0];
-            if (f) void openImage(f, f.name);
-          }}
-          className={`flex min-h-56 flex-col items-center justify-center gap-3 overflow-hidden rounded-xl border-2 border-dashed p-3 text-center text-sm ${
-            dragging ? "border-blue-500 bg-blue-50 dark:bg-blue-950/30" : "border-zinc-300 dark:border-zinc-700"
-          }`}
-        >
-          {image ? (
-            <>
-              {/* eslint-disable-next-line @next/next/no-img-element -- local blob: screenshot */}
-              <img
-                src={image.url}
-                alt="Your screenshot: click anywhere to pick that exact color"
-                onClick={pickFromImage}
-                className="max-h-[28rem] max-w-full cursor-crosshair rounded-md object-contain"
-              />
-              <p className="text-xs text-zinc-500">
-                Click the image to add an exact color{picked && <> · last picked <code>{picked}</code></>}. Drop or paste another screenshot to replace it.
-              </p>
-            </>
-          ) : (
-            <p className="text-zinc-600 dark:text-zinc-400">Drop a screenshot here, paste it with Ctrl+V, or</p>
-          )}
-          <button type="button" onClick={() => fileInput.current?.click()} className="rounded-lg bg-blue-600 px-3 py-1.5 font-medium text-white hover:bg-blue-700">
-            {image ? "Choose another" : "Choose screenshot"}
-          </button>
-          <input ref={fileInput} type="file" accept="image/*" hidden onChange={(e) => {
-            const f = e.target.files?.[0];
-            e.target.value = "";
-            if (f) void openImage(f, f.name);
-          }} />
-        </div>
-
-        <div className="flex flex-col gap-3 rounded-xl border border-zinc-200 p-3 dark:border-zinc-800">
-          <div className="flex items-center justify-between">
-            <h2 className="text-sm font-semibold">Palette</h2>
-            <span className="text-xs text-zinc-500">
-              {palette.length ? `${used.length} of ${palette.length} in use` : "0 colors"}
-            </span>
+      {/* 1. Source (compact) + palette (wide) */}
+      <section className="grid gap-4 md:grid-cols-[17rem_minmax(0,1fr)]">
+        <div className="flex flex-col gap-3">
+          <div
+            onDragOver={(e) => { e.preventDefault(); setDragging(true); }}
+            onDragLeave={() => setDragging(false)}
+            onDrop={(e) => {
+              e.preventDefault();
+              setDragging(false);
+              const f = e.dataTransfer.files[0];
+              if (f) void openImage(f, f.name);
+            }}
+            className={`flex flex-col items-center justify-center gap-2 overflow-hidden rounded-xl border-2 border-dashed p-2.5 text-center text-xs ${
+              image ? "" : "min-h-36"
+            } ${dragging ? "border-blue-500 bg-blue-50 dark:bg-blue-950/30" : "border-zinc-300 dark:border-zinc-700"}`}
+          >
+            {image ? (
+              <>
+                {/* eslint-disable-next-line @next/next/no-img-element -- local blob: screenshot */}
+                <img
+                  src={image.url}
+                  alt="Your screenshot: click anywhere to pick that exact color"
+                  onClick={pickFromImage}
+                  className="max-h-44 max-w-full cursor-crosshair rounded-md object-contain"
+                />
+                <p className="text-[11px] leading-snug text-zinc-500">
+                  Click the image to pick an exact color{picked && <> · <code>{picked}</code></>}
+                </p>
+              </>
+            ) : (
+              <p className="text-zinc-600 dark:text-zinc-400">Drop a screenshot here or paste it with Ctrl+V</p>
+            )}
+            <button type="button" onClick={() => fileInput.current?.click()} className="rounded-lg bg-blue-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-blue-700">
+              {image ? "Replace screenshot" : "Choose screenshot"}
+            </button>
+            <input ref={fileInput} type="file" accept="image/*" hidden onChange={(e) => {
+              const f = e.target.files?.[0];
+              e.target.value = "";
+              if (f) void openImage(f, f.name);
+            }} />
           </div>
-          {palette.length > 1 && (
-            <div className="-mt-1 flex items-center gap-3 text-[11px]">
-              <span className="text-zinc-500">Tick the colors to style with:</span>
-              <button type="button" onClick={() => setAllActive(true)} disabled={used.length === palette.length}
-                className="text-blue-600 hover:underline disabled:text-zinc-400 disabled:no-underline dark:text-blue-400">Use all</button>
-              <button type="button" onClick={() => setAllActive(false)} disabled={!used.length}
-                className="text-blue-600 hover:underline disabled:text-zinc-400 disabled:no-underline dark:text-blue-400">Use none</button>
-            </div>
-          )}
+
           {image && (
             <label className="flex flex-col gap-1 text-xs font-medium text-zinc-600 dark:text-zinc-400">
               Colors to extract: {count}
@@ -299,104 +318,144 @@ export default function ColorPaletteTool() {
                 onKeyUp={() => applyPalette(keepOff(extract(image.img, count)), customized)} />
             </label>
           )}
-          {palette.length === 0 && <p className="text-xs text-zinc-500">Add a screenshot to extract its colors, or enter the client’s colors below.</p>}
-          <ul className="grid grid-cols-2 gap-2">
-            {palette.map((s) => {
-              const on = s.active !== false;
-              return (
-              <li key={s.hex} className={`group flex items-center gap-1.5 rounded-lg border p-1.5 transition-opacity ${
-                on ? "border-zinc-200 dark:border-zinc-800" : "border-dashed border-zinc-300 opacity-55 dark:border-zinc-700"}`}>
-                <input type="checkbox" checked={on} onChange={() => toggleColor(s.hex)} aria-label={`Use ${s.hex} for styling`}
-                  title={on ? "In use: click to keep it in the palette but stop using it" : "Not in use: click to use it again"}
-                  className="h-3.5 w-3.5 shrink-0 accent-blue-600" />
-                <button type="button" onClick={() => toggleColor(s.hex)} tabIndex={-1} aria-hidden
-                  className="h-8 w-8 shrink-0 rounded-md border border-black/10" style={{ background: s.hex }} />
-                <span className="min-w-0 flex-1">
-                  <button type="button" onClick={() => navigator.clipboard.writeText(s.hex)} title="Copy hex"
-                    className={`block font-mono text-xs hover:underline ${on ? "" : "line-through"}`}>
-                    {s.hex}
-                  </button>
-                  <span className="text-[10px] text-zinc-500">
-                    {s.share !== undefined && `${Math.round(s.share * 100)}%`}{!on && (s.share !== undefined ? " · off" : "off")}
-                  </span>
-                </span>
-                <button type="button" onClick={() => commitPalette(palette.filter((x) => x.hex !== s.hex))} aria-label={`Remove ${s.hex}`}
-                  title="Remove from the palette"
-                  className="rounded px-1 text-xs text-zinc-400 hover:text-red-600">
-                  ✕
-                </button>
-              </li>
-              );
-            })}
-          </ul>
-          <form className="flex gap-1.5" onSubmit={(e) => { e.preventDefault(); addHexes(); }}>
-            <input value={hexInput} onChange={(e) => setHexInput(e.target.value)} placeholder="Paste hex codes: #1a2b3c, #f97316"
-              aria-label="Hex codes to add" className="min-w-0 flex-1 rounded-md border border-zinc-300 bg-background px-2 py-1.5 font-mono text-xs dark:border-zinc-700" />
-            <button type="submit" disabled={!hexInput.trim()} className={button}>Add</button>
-          </form>
-          <div className="flex flex-wrap items-center gap-2">
-            <label className={`${button} flex cursor-pointer items-center gap-2`}>
-              + Add color
-              <input type="color" className="h-0 w-0 opacity-0" onChange={(e) => addColor(e.target.value)} />
-            </label>
-            {hasEyeDropper && (
-              <button type="button" onClick={screenEyedropper} className={button} title="Pick a color from anywhere on your screen">
-                Eyedropper
-              </button>
-            )}
-          </div>
-          <fieldset className="flex flex-col gap-1 border-t border-zinc-200 pt-3 dark:border-zinc-800">
-            <legend className="mb-1 text-xs font-semibold">Layouts may use</legend>
-            {POOL_MODES.map((m) => (
-              <label key={m.id} className="flex cursor-pointer items-start gap-2 text-xs" title={m.hint}>
-                <input type="radio" name="pool-mode" checked={mode === m.id} onChange={() => changeMode(m.id)} className="mt-0.5 accent-blue-600" />
-                <span>
-                  <span className="font-medium">{m.label}</span>
-                  <span className="block text-[11px] text-zinc-500">{m.hint}</span>
-                </span>
+
+          <div className="flex flex-col gap-2 rounded-xl border border-zinc-200 p-3 dark:border-zinc-800">
+            <h2 className="text-xs font-semibold">Add colors</h2>
+            <form className="flex gap-1.5" onSubmit={(e) => { e.preventDefault(); addHexes(); }}>
+              <input value={hexInput} onChange={(e) => setHexInput(e.target.value)} placeholder="#1a2b3c, #f97316"
+                aria-label="Hex codes to add" className="min-w-0 flex-1 rounded-md border border-zinc-300 bg-background px-2 py-1.5 font-mono text-xs dark:border-zinc-700" />
+              <button type="submit" disabled={!hexInput.trim()} className={button}>Add</button>
+            </form>
+            <div className="flex flex-wrap gap-1.5">
+              <label className={`${button} flex flex-1 cursor-pointer items-center justify-center`}>
+                + Color picker
+                <input type="color" className="h-0 w-0 opacity-0" onChange={(e) => addColor(e.target.value)} />
               </label>
-            ))}
+              {hasEyeDropper && (
+                <button type="button" onClick={screenEyedropper} className={`${button} flex-1`} title="Pick a color from anywhere on your screen">
+                  Eyedropper
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+
+        <div className="flex min-w-0 flex-col gap-3 rounded-xl border border-zinc-200 p-3 sm:p-4 dark:border-zinc-800">
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+            <h2 className="text-sm font-semibold">Palette</h2>
+            <span className="text-xs text-zinc-500">
+              {palette.length ? `${used.length} of ${palette.length} in use` : "0 colors"}
+            </span>
+            {palette.length > 1 && (
+              <span className="flex items-center gap-2 text-[11px]">
+                <button type="button" onClick={() => setAllActive(true)} disabled={used.length === palette.length}
+                  className="text-blue-600 hover:underline disabled:text-zinc-400 disabled:no-underline dark:text-blue-400">Use all</button>
+                <button type="button" onClick={() => setAllActive(false)} disabled={!used.length}
+                  className="text-blue-600 hover:underline disabled:text-zinc-400 disabled:no-underline dark:text-blue-400">Use none</button>
+              </span>
+            )}
+            <div className="ml-auto flex flex-wrap gap-2">
+              <button type="button" className={button}
+                disabled={!used.length} onClick={() => { autoVariant.current += 1; setThemes(autoThemes(used, mode, autoVariant.current)); setCustomized(false); }}>
+                ↻ Auto-assign
+              </button>
+              {palette.length > 0 && <CopyButton text={hexes.join(", ")} label="Copy" className="py-1.5 text-sm" />}
+              {palette.length > 0 && (
+                <button type="button" className={`${button} text-red-600`}
+                  onClick={() => { if (window.confirm("Remove all colors from the palette?")) commitPalette([]); }}>
+                  Clear
+                </button>
+              )}
+            </div>
+          </div>
+
+          {palette.length === 0 ? (
+            <p className="rounded-lg border border-dashed border-zinc-300 px-3 py-6 text-center text-xs text-zinc-500 dark:border-zinc-700">
+              Add a screenshot to extract its colors, or enter the client’s colors on the left.
+            </p>
+          ) : (
+            <ul className="grid grid-cols-[repeat(auto-fill,minmax(8.5rem,1fr))] gap-2">
+              {palette.map((s) => {
+                const on = s.active !== false;
+                return (
+                  <li key={s.hex} className={`flex items-center gap-1.5 rounded-lg border p-1.5 transition-opacity ${
+                    on ? "border-zinc-200 dark:border-zinc-800" : "border-dashed border-zinc-300 opacity-55 dark:border-zinc-700"}`}>
+                    <input type="checkbox" checked={on} onChange={() => toggleColor(s.hex)} aria-label={`Use ${s.hex} for styling`}
+                      title={on ? "In use: click to keep it in the palette but stop using it" : "Not in use: click to use it again"}
+                      className="h-3.5 w-3.5 shrink-0 accent-blue-600" />
+                    <button type="button" onClick={() => toggleColor(s.hex)} tabIndex={-1} aria-hidden
+                      className="h-8 w-8 shrink-0 rounded-md border border-black/10" style={{ background: s.hex }} />
+                    <span className="min-w-0 flex-1">
+                      <button type="button" onClick={() => navigator.clipboard.writeText(s.hex)} title="Copy hex"
+                        className={`block font-mono text-xs hover:underline ${on ? "" : "line-through"}`}>
+                        {s.hex}
+                      </button>
+                      <span className="text-[10px] text-zinc-500">
+                        {s.share !== undefined && `${Math.round(s.share * 100)}%`}{!on && (s.share !== undefined ? " · off" : "off")}
+                      </span>
+                    </span>
+                    <button type="button" onClick={() => commitPalette(palette.filter((x) => x.hex !== s.hex))} aria-label={`Remove ${s.hex}`}
+                      title="Remove from the palette"
+                      className="rounded px-1 text-xs text-zinc-400 hover:text-red-600">
+                      ✕
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+
+          <fieldset className="mt-auto border-t border-zinc-200 pt-3 dark:border-zinc-800">
+            <legend className="mb-2 text-xs font-semibold">Layouts may use</legend>
+            <div className="grid gap-2 sm:grid-cols-3">
+              {POOL_MODES.map((m) => (
+                <label key={m.id} className={`flex cursor-pointer items-start gap-2 rounded-lg border p-2 text-xs ${
+                  mode === m.id ? "border-blue-600 ring-1 ring-blue-600" : "border-zinc-200 hover:bg-zinc-50 dark:border-zinc-800 dark:hover:bg-zinc-900"}`}>
+                  <input type="radio" name="pool-mode" checked={mode === m.id} onChange={() => changeMode(m.id)} className="mt-0.5 accent-blue-600" />
+                  <span>
+                    <span className="font-medium">{m.label}</span>
+                    <span className="block text-[11px] leading-snug text-zinc-500">{m.hint}</span>
+                  </span>
+                </label>
+              ))}
+            </div>
           </fieldset>
           {notes.map((n) => (
             <p key={n} className="rounded-md border border-amber-200 bg-amber-50 px-2 py-1.5 text-[11px] text-amber-800 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-300">{n}</p>
           ))}
-          <div className="mt-auto flex flex-wrap gap-2 border-t border-zinc-200 pt-3 dark:border-zinc-800">
-            <button type="button" className={button}
-              disabled={!used.length} onClick={() => { setThemes(autoThemes(used, mode)); setCustomized(false); }}>
-              ↻ Auto-assign colors
-            </button>
-            {palette.length > 0 && <CopyButton text={hexes.join(", ")} label="Copy palette" className="py-2 text-sm" />}
-            {palette.length > 0 && (
-              <button type="button" className={`${button} text-red-600`}
-                onClick={() => { if (window.confirm("Remove all colors from the palette?")) commitPalette([]); }}>
-                Clear
-              </button>
-            )}
-          </div>
         </div>
       </section>
 
       {error && <p className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700 dark:border-red-900 dark:bg-red-950/40 dark:text-red-400">{error}</p>}
 
       {/* 2. Sample content */}
-      <section className="grid gap-3 sm:grid-cols-[1fr_2fr_10rem]">
-        {(["headline", "text", "button"] as const).map((k) => (
-          <label key={k} className="flex flex-col gap-1 text-xs font-medium text-zinc-600 dark:text-zinc-400">
-            {k === "headline" ? "Headline" : k === "text" ? "Text" : "Button label"}
-            <input value={sample[k]} onChange={(e) => setSample((s) => ({ ...s, [k]: e.target.value }))}
-              className="rounded-md border border-zinc-300 bg-background px-2 py-1.5 text-sm text-foreground dark:border-zinc-700" />
-          </label>
-        ))}
+      <section className="flex flex-col gap-2 rounded-xl border border-zinc-200 p-3 dark:border-zinc-800">
+        <h2 className="text-sm font-semibold">Sample text</h2>
+        <div className="grid gap-3 sm:grid-cols-[1fr_2fr_10rem]">
+          {(["headline", "text", "button"] as const).map((k) => (
+            <label key={k} className="flex flex-col gap-1 text-xs font-medium text-zinc-600 dark:text-zinc-400">
+              {k === "headline" ? "Headline" : k === "text" ? "Text" : "Button label"}
+              <input value={sample[k]} onChange={(e) => setSample((s) => ({ ...s, [k]: e.target.value }))}
+                className="rounded-md border border-zinc-300 bg-background px-2 py-1.5 text-sm text-foreground dark:border-zinc-700" />
+            </label>
+          ))}
+        </div>
       </section>
 
-      {/* 3. Three simulations */}
+      {/* 3. Fonts */}
+      <FontPicker value={font} onChange={setFont} />
+
+      {/* 4. Three simulations */}
       <section className="grid gap-4 xl:grid-cols-3">
         {themes.map((t) => (
-          <ThemeCard key={t.id} theme={t} pool={pool} sample={sample} onChange={(fn) => updateTheme(t.id, fn)} />
+          <ThemeCard key={t.id} theme={t} pool={pool} sample={sample} fonts={fonts} onChange={(fn) => updateTheme(t.id, fn)} />
         ))}
       </section>
 
-      <CodePanel css={themesToCss(themes)} json={JSON.stringify({ palette: hexes, used, themes }, null, 2)} />
+      <CodePanel
+        css={`${fontsToCss(fonts)}\n\n${themesToCss(themes)}`}
+        json={JSON.stringify({ palette: hexes, used, fonts: { heading: fonts.heading, body: fonts.body }, themes }, null, 2)}
+      />
       <p className="text-xs text-zinc-500">Your palette and colors are saved in this browser. The screenshot isn’t stored.</p>
     </div>
   );
@@ -404,10 +463,56 @@ export default function ColorPaletteTool() {
 
 type Slot = { key: string; label: string; short?: string; value: string; allowTransparent?: boolean; set: (hex: string) => void };
 
-function ThemeCard({ theme: t, pool, sample, onChange }: {
+function FontPicker({ value, onChange }: { value: FontChoice; onChange: (c: FontChoice) => void }) {
+  const [category, setCategory] = useState(value.category);
+  const pairs = FONT_PAIRS[category];
+  useGoogleFonts(pairs);
+
+  return (
+    <section className="flex flex-col gap-3 rounded-xl border border-zinc-200 p-3 dark:border-zinc-800">
+      <div className="flex flex-wrap items-center gap-2">
+        <h2 className="text-sm font-semibold">Fonts</h2>
+        <div role="tablist" aria-label="Font style" className="inline-flex rounded-md border border-zinc-300 p-0.5 text-xs dark:border-zinc-700">
+          {FONT_CATEGORIES.map((c) => (
+            <button key={c} type="button" role="tab" aria-selected={category === c} onClick={() => setCategory(c)}
+              className={`rounded px-2.5 py-1 font-medium ${category === c ? "bg-blue-600 text-white" : "text-zinc-600 dark:text-zinc-400"}`}>
+              {FONT_CATEGORY_LABELS[c].label}
+            </button>
+          ))}
+        </div>
+        <span className="text-xs text-zinc-500">{FONT_CATEGORY_LABELS[category].hint}</span>
+      </div>
+      <ul className="grid gap-2 sm:grid-cols-2 xl:grid-cols-5">
+        {pairs.map((p, i) => {
+          const selected = value.category === category && value.index === i;
+          return (
+            <li key={i}>
+              <button type="button" aria-pressed={selected} onClick={() => onChange({ category, index: i })}
+                className={`flex h-full w-full flex-col gap-1 rounded-lg border p-3 text-left hover:bg-zinc-50 dark:hover:bg-zinc-900 ${
+                  selected ? "border-blue-600 ring-1 ring-blue-600" : "border-zinc-200 dark:border-zinc-800"}`}>
+                <span className="text-xl leading-tight" style={{ fontFamily: cssFamily(p.heading), fontWeight: p.heading.weight }}>
+                  Build something
+                </span>
+                <span className="text-xs leading-snug text-zinc-600 dark:text-zinc-400" style={{ fontFamily: cssFamily(p.body), fontWeight: p.body.weight }}>
+                  A short paragraph to see how body text reads.
+                </span>
+                <span className="mt-auto pt-1 text-[10px] text-zinc-500">
+                  {p.heading.family}{p.body.family !== p.heading.family && ` + ${p.body.family}`}
+                </span>
+              </button>
+            </li>
+          );
+        })}
+      </ul>
+    </section>
+  );
+}
+
+function ThemeCard({ theme: t, pool, sample, fonts, onChange }: {
   theme: Theme;
   pool: PoolGroup[];
   sample: Sample;
+  fonts: FontPair;
   onChange: (fn: (t: Theme) => Theme) => void;
 }) {
   const [state, setState] = useState<"normal" | "hover">("normal");
@@ -423,6 +528,16 @@ function ThemeCard({ theme: t, pool, sample, onChange }: {
     { key: "headline", label: "Headline", value: t.headline, set: (v) => onChange((th) => ({ ...th, headline: v })) },
     { key: "text", label: "Text", value: t.text, set: (v) => onChange((th) => ({ ...th, text: v })) },
   ];
+  // Every container has a property card; themes saved before it existed fall back to the defaults.
+  const prop = t.property ?? PROPERTY_DEFAULTS;
+  const setProp = (part: keyof PropertyColors, hex: string) =>
+    onChange((th) => ({ ...th, property: { ...(th.property ?? PROPERTY_DEFAULTS), [part]: hex } }));
+  const propSlots: Slot[] = [
+    { key: "p-cardBg", label: "Property card BG", short: "Card BG", value: prop.cardBg, set: (v) => setProp("cardBg", v) },
+    { key: "p-cardText", label: "Property card typography", short: "Card text", value: prop.cardText, set: (v) => setProp("cardText", v) },
+    { key: "p-tagBg", label: "Property tag BG", short: "Tag BG", value: prop.tagBg, set: (v) => setProp("tagBg", v) },
+    { key: "p-tagText", label: "Property tag typography", short: "Tag text", value: prop.tagText, set: (v) => setProp("tagText", v) },
+  ];
   const btn = t.button[state];
   const buttonSlots: Slot[] = (["border", "fill", "text"] as const).map((part) => ({
     key: `${state}-${part}`,
@@ -437,6 +552,8 @@ function ThemeCard({ theme: t, pool, sample, onChange }: {
     { label: "Text", ratio: contrast(t.text, t.bg) },
     { label: "Button", ratio: contrast(solid(n.text, t.bg), solid(n.fill, t.bg)) },
     { label: "Button hover", ratio: contrast(solid(h.text, t.bg), solid(h.fill, t.bg)) },
+    { label: "Card text", ratio: contrast(prop.cardText, prop.cardBg) },
+    { label: "Tag text", ratio: contrast(prop.tagText, prop.tagBg) },
   ];
 
   const vars = {
@@ -449,8 +566,8 @@ function ThemeCard({ theme: t, pool, sample, onChange }: {
       {/* Preview */}
       <div className="flex min-h-64 flex-col justify-center gap-3 p-6 sm:p-8" style={{ background: t.bg }}>
         <span className="text-[11px] font-semibold uppercase tracking-wider opacity-70" style={{ color: t.text }}>{t.label}</span>
-        <h3 className="text-2xl font-bold leading-tight tracking-tight" style={{ color: t.headline }}>{sample.headline}</h3>
-        <p className="text-sm leading-relaxed" style={{ color: t.text }}>{sample.text}</p>
+        <h3 className="text-2xl leading-tight tracking-tight" style={{ color: t.headline, fontFamily: cssFamily(fonts.heading), fontWeight: fonts.heading.weight }}>{sample.headline}</h3>
+        <p className="text-sm leading-relaxed" style={{ color: t.text, fontFamily: cssFamily(fonts.body), fontWeight: fonts.body.weight }}>{sample.text}</p>
         <div>
           <button
             type="button"
@@ -462,6 +579,7 @@ function ThemeCard({ theme: t, pool, sample, onChange }: {
             {sample.button}
           </button>
         </div>
+        <PropertyCard colors={prop} fonts={fonts} />
       </div>
 
       {/* Controls: compact rows of swatches */}
@@ -478,6 +596,11 @@ function ThemeCard({ theme: t, pool, sample, onChange }: {
             </p>
             <div className="flex gap-1">{buttonSlots.map((s) => <ColorSlot key={s.key} slot={s} pool={pool} alignRight />)}</div>
           </div>
+        </div>
+
+        <div>
+          <p className="mb-0.5 text-[10px] font-semibold uppercase tracking-wide text-zinc-500">Property card</p>
+          <div className="flex gap-1">{propSlots.map((s) => <ColorSlot key={s.key} slot={s} pool={pool} />)}</div>
         </div>
 
         <div className="flex flex-wrap items-center gap-2 text-[11px]">
@@ -511,7 +634,31 @@ function ThemeCard({ theme: t, pool, sample, onChange }: {
   );
 }
 
-const CHECKER = "repeating-conic-gradient(#d4d4d8 0% 25%, #ffffff 0% 50%) 50% / 10px 10px";
+/** Sample real-estate listing card: photo placeholder with a tag, then price, address and details. */
+function PropertyCard({ colors: c, fonts }: { colors: PropertyColors; fonts: FontPair }) {
+  return (
+    <div className="mt-2 w-full max-w-xs overflow-hidden" style={{ background: c.cardBg, color: c.cardText, fontFamily: cssFamily(fonts.body) }}>
+      <div className="relative flex aspect-[2/1] items-center justify-center bg-zinc-300 text-zinc-500">
+        <svg viewBox="0 0 24 24" className="h-8 w-8" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+          <rect x="3" y="4" width="18" height="16" rx="2" />
+          <circle cx="8.5" cy="9.5" r="1.5" />
+          <path d="m21 16-5-5-8 9" />
+        </svg>
+        <span className="absolute right-2 top-2 px-2 py-1 text-[10px] font-bold uppercase leading-none tracking-wider"
+          style={{ background: c.tagBg, color: c.tagText }}>
+          For sale
+        </span>
+      </div>
+      <div className="flex flex-col gap-1.5 px-4 py-3.5">
+        <p className="text-2xl leading-none" style={{ fontFamily: cssFamily(fonts.heading), fontWeight: fonts.heading.weight }}>$289,000</p>
+        <p className="text-xs font-bold uppercase leading-snug tracking-wide">24557 Meadows Trail, Perry, MO 63462</p>
+        <p className="text-[10px] uppercase tracking-wider opacity-90">3 Beds | 2 Baths | 2,000 Sq.Ft.</p>
+      </div>
+    </div>
+  );
+}
+
+const CHECKER ="repeating-conic-gradient(#d4d4d8 0% 25%, #ffffff 0% 50%) 50% / 10px 10px";
 const POPOVER_WIDTH = 224;
 const GAP = 6;
 
