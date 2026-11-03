@@ -95,6 +95,19 @@ export const TOOLS: Tool[] = [
     ),
   },
   {
+    name: "Headshot Maker",
+    description: "Auto-detect the face in a photo and crop it into a profile picture.",
+    href: "/headshot",
+    accent: "bg-lime-100 text-lime-600 dark:bg-lime-500/15 dark:text-lime-400",
+    icon: (
+      <Icon>
+        <path d="M4 8V5a1 1 0 0 1 1-1h3M16 4h3a1 1 0 0 1 1 1v3M20 16v3a1 1 0 0 1-1 1h-3M8 20H5a1 1 0 0 1-1-1v-3" />
+        <circle cx="12" cy="10" r="3" />
+        <path d="M7 18c.8-2.4 2.7-3.5 5-3.5s4.2 1.1 5 3.5" />
+      </Icon>
+    ),
+  },
+  {
     name: "Drive Video Thumbnail",
     description: "Grab and download the thumbnail of a public Google Drive video.",
     href: "/drive-thumbnail",

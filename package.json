@@ -10,6 +10,7 @@
   },
   "dependencies": {
     "@ffmpeg/core": "^0.12.10",
+    "@mediapipe/tasks-vision": "1.2.0",
     "@tiptap/extensions": "^3.32.0",
     "@tiptap/pm": "^3.32.0",
     "@tiptap/react": "^3.32.0",
