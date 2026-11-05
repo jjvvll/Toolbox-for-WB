@@ -1,24 +1,4 @@
-// Color math, automatic role assignment, and CSS export for the palette tool.
-
-export const TRANSPARENT = "transparent";
-
-export type ButtonColors = { border: string; fill: string; text: string };
-export type ThemeId = "dark" | "light" | "block";
-/** Colors for the property listing card shown in every container. */
-export type PropertyColors = { cardBg: string; cardText: string; tagBg: string; tagText: string };
-export const PROPERTY_DEFAULTS: PropertyColors = { cardBg: "#222222", cardText: "#ffffff", tagBg: "#9ca3af", tagText: "#111111" };
-
-export type Theme = {
-  id: ThemeId;
-  label: string;
-  bg: string;
-  headline: string;
-  text: string;
-  button: { normal: ButtonColors; hover: ButtonColors };
-  property?: PropertyColors;
-};
-
-export const THEME_LABELS: Record<ThemeId, string> = { dark: "Dark", light: "Light", block: "Color block" };
+// Color math, the template :root variables, automatic assignment, and CSS export for the palette tool.
 
 type RGB = [number, number, number];
 
@@ -62,12 +42,12 @@ export function bestOn(bg: string, options: string[]): string {
   return options.reduce((best, c) => (contrast(c, bg) > contrast(best, bg) ? c : best), options[0] ?? bg);
 }
 
-/** Effective color behind button text: the fill, or the container background when the fill is transparent. */
-export const solid = (color: string, behind: string) => (color === TRANSPARENT ? behind : color);
+/** A hex color at the given opacity, for the live preview. */
+export const withAlpha = (hex: string, alpha: number) => `rgba(${hexToRgb(hex).join(", ")}, ${alpha})`;
 
 /**
- * Which colors the layouts may use:
- * - "strict": only the client's palette (plus transparent for outline buttons)
+ * Which colors the variables may use:
+ * - "strict": only the client's palette
  * - "neutrals": the palette plus white and black
  * - "tints": the palette, white and black, and lighter/darker versions of each palette color
  */
@@ -76,7 +56,7 @@ export type PoolMode = "strict" | "neutrals" | "tints";
 export const POOL_MODES: { id: PoolMode; label: string; hint: string }[] = [
   { id: "strict", label: "Only these colors", hint: "Exactly the client’s palette." },
   { id: "neutrals", label: "+ White & black", hint: "Adds pure white and black for backgrounds and text." },
-  { id: "tints", label: "+ Tints & shades", hint: "Also lighter/darker versions of each color, for soft backgrounds and hovers." },
+  { id: "tints", label: "+ Tints & shades", hint: "Also lighter/darker versions of each color, for soft backgrounds." },
 ];
 
 const NEUTRALS = ["#ffffff", "#000000"];
@@ -109,8 +89,8 @@ export function paletteNotes(palette: string[], mode: PoolMode): string[] {
   if (mode === "strict" && palette.length === 1) {
     notes.push("With one color and nothing else, text and background are the same color. Allow white & black (or tints) for readable layouts.");
   } else {
-    if (Math.min(...pool.map(luminance)) > 0.2) notes.push("No dark color is available, so the Dark layout uses the darkest one there is.");
-    if (Math.max(...pool.map(luminance)) < 0.6) notes.push("No light color is available, so the Light layout uses the lightest one there is.");
+    if (Math.min(...pool.map(luminance)) > 0.2) notes.push("No dark color is available, so the Dark theme uses the darkest one there is.");
+    if (Math.max(...pool.map(luminance)) < 0.6) notes.push("No light color is available, so the Light theme uses the lightest one there is.");
     const best = Math.max(...pool.flatMap((a) => pool.map((b) => contrast(a, b))));
     if (best < 4.5) {
       notes.push(`The highest contrast these colors allow is ${best.toFixed(1)}:1, below the 4.5:1 recommended for body text. Allowing white & black would help.`);
@@ -119,19 +99,115 @@ export function paletteNotes(palette: string[], mode: PoolMode): string[] {
   return notes;
 }
 
+export type TemplateId = "visionary" | "masterpiece";
+export const TEMPLATES: { id: TemplateId; label: string }[] = [
+  { id: "visionary", label: "Visionary" },
+  { id: "masterpiece", label: "Producer / Masterpiece" },
+];
+
+export type TextCase = "uppercase" | "capitalize" | "lowercase" | "none";
+export const TEXT_CASES: TextCase[] = ["uppercase", "capitalize", "lowercase", "none"];
+
+export type RootVarName =
+  | "--primary-light-bg" | "--primary-dark-bg" | "--primary-dark" | "--primary-light"
+  | "--accent-dark" | "--accent-light"
+  | "--background-dark-inactive" | "--background-light-inactive"
+  | "--border-dark-inactive" | "--border-dark-active" | "--border-light-inactive" | "--border-light-active"
+  | "--typography-dark" | "--typography-light"
+  | "--accent-button" | "--accent-tag" | "--typography-tag"
+  | "--accent-ammenities" | "--typography-ammenities"
+  | "--accent-card" | "--typography-card";
+
+export type RootVar = {
+  name: RootVarName;
+  group: string;
+  /** Follows this variable until it's set by hand. Variables without a link are core colors. */
+  link?: RootVarName;
+  /** Replaces `link` for one template. */
+  linkIn?: Partial<Record<TemplateId, RootVarName>>;
+  /** Exported as `rgba(from <color> r g b / <alpha>)`. */
+  alpha?: number;
+  /** Core colors only: the value before anything is assigned. */
+  fallback?: string;
+  /** Not part of every template. */
+  only?: TemplateId;
+};
+
+/** In export order. The names, including "ammenities", match the templates' own CSS. */
+export const ROOT_VARS: RootVar[] = [
+  { name: "--primary-light-bg", group: "Main backgrounds", fallback: "#f6f1e7" },
+  { name: "--primary-dark-bg", group: "Main backgrounds", link: "--primary-dark" },
+  { name: "--primary-dark", group: "Primary", fallback: "#24384f" },
+  { name: "--primary-light", group: "Primary", fallback: "#ffffff" },
+  { name: "--accent-dark", group: "Accent", link: "--primary-dark" },
+  { name: "--accent-light", group: "Accent", link: "--primary-light" },
+  { name: "--background-dark-inactive", group: "Inactive & active states", link: "--primary-dark", alpha: 0.1 },
+  { name: "--background-light-inactive", group: "Inactive & active states", link: "--primary-light", alpha: 0.1 },
+  { name: "--border-dark-inactive", group: "Inactive & active states", link: "--primary-dark", alpha: 0.3 },
+  { name: "--border-dark-active", group: "Inactive & active states", link: "--primary-dark" },
+  { name: "--border-light-inactive", group: "Inactive & active states", link: "--primary-light", alpha: 0.3 },
+  { name: "--border-light-active", group: "Inactive & active states", link: "--primary-light" },
+  { name: "--typography-dark", group: "Typography", link: "--primary-dark" },
+  { name: "--typography-light", group: "Typography", link: "--primary-light" },
+  { name: "--accent-button", group: "Accent", fallback: "#4f7a9c" },
+  { name: "--accent-tag", group: "Tag", fallback: "#c9b28a" },
+  { name: "--typography-tag", group: "Tag", fallback: "#ffffff" },
+  { name: "--accent-ammenities", group: "Amenities", link: "--accent-button", only: "visionary" },
+  { name: "--typography-ammenities", group: "Amenities", link: "--typography-light", only: "visionary" },
+  // Visionary's card uses the button color, so its text follows the amenities text, which sits on the same color.
+  { name: "--accent-card", group: "Card", link: "--primary-dark", linkIn: { visionary: "--accent-button" } },
+  { name: "--typography-card", group: "Card", link: "--primary-light", linkIn: { visionary: "--typography-ammenities" } },
+];
+
+/** Colors set by hand or by auto-assign. Any variable missing here follows its link or fallback. */
+export type RootValues = Partial<Record<RootVarName, string>>;
+
+/** The starting point before a palette is added: the Visionary sample. */
+export const ROOT_DEFAULTS: RootValues = { "--typography-dark": "#16212e" };
+
+const varsByName = new Map(ROOT_VARS.map((v) => [v.name, v]));
+
+export const varsFor = (template: TemplateId) => ROOT_VARS.filter((v) => !v.only || v.only === template);
+
+/** The variable this one follows in the given template, if any. */
+export const linkOf = (v: RootVar, template: TemplateId) => v.linkIn?.[template] ?? v.link;
+
+/** The variable's color, without any opacity it's exported with. */
+export function rootHex(values: RootValues, name: RootVarName, template: TemplateId): string {
+  const set = values[name];
+  if (set) return set;
+  const def = varsByName.get(name)!;
+  const link = linkOf(def, template);
+  return link ? rootHex(values, link, template) : def.fallback!;
+}
+
+const cssValue = (values: RootValues, v: RootVar, template: TemplateId) => {
+  const hex = rootHex(values, v.name, template);
+  return v.alpha === undefined ? hex : `rgba(from ${hex} r g b / ${v.alpha})`;
+};
+
+/** The template's variables as name/value pairs, including --text-case. */
+export function rootEntries(template: TemplateId, values: RootValues, textCase: TextCase): [string, string][] {
+  return [...varsFor(template).map((v): [string, string] => [v.name, cssValue(values, v, template)]), ["--text-case", textCase]];
+}
+
+export function rootToCss(template: TemplateId, values: RootValues, textCase: TextCase): string {
+  const label = TEMPLATES.find((t) => t.id === template)!.label;
+  const lines = rootEntries(template, values, textCase).map(([name, value]) => `  ${name}: ${value};`);
+  return [`/*${label}*/`, ":root {", ...lines, "}"].join("\n");
+}
+
 /**
- * Builds dark / light / color-block themes using only colors from the pool (plus transparent,
- * and, in "tints" mode, softened body text). Buttons are solid, turning into an outline on hover.
- * Works for any palette size, including 1 or 2 colors.
+ * Fills the core colors from the palette; everything else follows through its link. Works for any palette
+ * size, including 1 or 2 colors. `variant` rotates through the alternatives for each choice.
  */
-export function autoThemes(palette: string[], mode: PoolMode = "neutrals", variant = 0): Theme[] {
+export function autoRoot(palette: string[], mode: PoolMode = "neutrals", variant = 0): RootValues {
   const brand = palette.length ? palette : ["#2563eb"];
   const pool = [...new Set(colorPool(brand, mode).flatMap((g) => g.colors))];
   const byLum = [...pool].sort((a, b) => luminance(a) - luminance(b));
   // Backgrounds: prefer the client's own colors, then tints/shades of them, and only then pure black/white.
   const ownByLum = [...brand].sort((a, b) => luminance(a) - luminance(b));
   const derived = byLum.filter((c) => !NEUTRALS.includes(c) && !brand.includes(c));
-  // Each candidate list starts with the default pick; `variant` rotates through the alternatives.
   const pick = <T,>(list: T[]) => list[variant % list.length];
   const unique = (list: string[]) => [...new Set(list)];
   const darkest = pick(unique([
@@ -142,109 +218,26 @@ export function autoThemes(palette: string[], mode: PoolMode = "neutrals", varia
     [...ownByLum].reverse().find((c) => luminance(c) > 0.8) ?? [...derived].reverse().find((c) => luminance(c) > 0.8) ?? byLum[byLum.length - 1],
     ...[...ownByLum].reverse().filter((c) => luminance(c) > 0.6), ...[...derived].reverse().filter((c) => luminance(c) > 0.6), byLum[byLum.length - 1],
   ]));
-  // The accent: the most colorful palette color, preferring ones that aren't just near-black/white.
-  const accent = pick(
-    [...brand].sort((a, b) => chroma(b) - chroma(a) || Math.abs(luminance(a) - 0.4) - Math.abs(luminance(b) - 0.4)),
-  );
+  const light = pool.includes("#ffffff") ? "#ffffff" : lightest;
 
-  const others = (x: string) => pool.filter((c) => c !== x);
-  const textOn = (bg: string) => bestOn(bg, others(bg).length ? others(bg) : [bg]);
-  /** Softer body text in tints mode (only while it stays readable); otherwise the most readable color. */
-  const bodyOn = (bg: string) => {
-    const strong = textOn(bg);
-    const soft = mix(strong, bg, 0.18);
-    return mode === "tints" && contrast(soft, bg) >= 4.5 ? soft : strong;
+  // Button: the most colorful palette color that shows up on the light background.
+  const byChroma = [...brand].sort((a, b) => chroma(b) - chroma(a) || Math.abs(luminance(a) - 0.4) - Math.abs(luminance(b) - 0.4));
+  const onLight = byChroma.filter((c) => contrast(c, lightest) >= 1.5);
+  const accent = pick(onLight.length ? onLight : byChroma);
+  // Tag: the next most colorful color that isn't a background and shows up on the card; otherwise it matches the button.
+  const tag = byChroma.find((c) => c !== accent && c !== darkest && c !== lightest && contrast(c, darkest) >= 1.5) ?? accent;
+
+  const values: RootValues = {
+    "--primary-light-bg": lightest,
+    "--primary-dark": darkest,
+    "--primary-light": light,
+    "--accent-button": accent,
+    "--accent-tag": tag,
+    "--typography-tag": bestOn(tag, [darkest, light]),
   };
-
-  function buttonFor(bg: string): Theme["button"] {
-    // Fill: the most colorful palette color that stands out from the background; else the text color.
-    const fill =
-      (contrast(accent, bg) >= 1.5 ? accent : undefined) ??
-      [...brand].filter((c) => c !== bg && contrast(c, bg) >= 1.5).sort((a, b) => chroma(b) - chroma(a))[0] ?? textOn(bg);
-    const white = pool.find((c) => c === "#ffffff") ?? textOn(fill);
-
-    // House style, by the button's own color. Dark button: border and fill in the color, white text; hover clears
-    // the fill and the text takes the color. Light button: the reverse, with dark text on the fill.
-    if (fill === accent) {
-      const isDark = luminance(accent) < 0.4;
-      const label = isDark ? white : (pool.find((c) => c === "#000000") ?? textOn(accent));
-      const hoverText = contrast(accent, bg) >= 3 ? accent : textOn(bg);
-      return {
-        normal: { border: accent, fill: accent, text: label },
-        hover: { border: accent, fill: TRANSPARENT, text: hoverText },
-      };
-    }
-
-    // Fallback (e.g. the accent is the background): solid button turning into an outline on hover.
-    const normal: ButtonColors = { border: fill, fill, text: textOn(fill) };
-    const hover: ButtonColors = { border: fill, fill: TRANSPARENT, text: contrast(fill, bg) >= 3 ? fill : textOn(bg) };
-    return { normal, hover };
-  }
-
-  /** Labels on a solid color: white or black when allowed (like the button label), else the most readable color. */
-  const labelOn = (bg: string) => {
-    const bw = pool.filter((c) => NEUTRALS.includes(c));
-    return bw.length ? bestOn(bg, bw) : textOn(bg);
-  };
-
-  /**
-   * Property card: a card that stands apart from the container (a light card on dark, a dark card on light,
-   * whichever reads more on a color block), its most readable text, and an accent-colored tag on the photo.
-   */
-  function propertyFor(bg: string): PropertyColors {
-    // Colors that stand apart from the container, darkest first.
-    const candidates = byLum.filter((c) => c !== bg && contrast(c, bg) >= 1.5);
-    const ends = [darkest, lightest].filter((c) => candidates.includes(c));
-    const cardBg = !candidates.length
-      ? textOn(bg)
-      : luminance(bg) < 0.2
-        ? (candidates.includes(lightest) ? lightest : candidates[candidates.length - 1])
-        : luminance(bg) > 0.6
-          ? (candidates.includes(darkest) ? darkest : candidates[0])
-          : bestOn(bg, ends.length ? ends : candidates);
-    const card = cardBg;
-    const tagBg =
-      [accent, ...[...brand].sort((a, b) => chroma(b) - chroma(a))].find((c) => c !== card && contrast(c, card) >= 1.5) ??
-      textOn(card);
-    return { cardBg: card, cardText: textOn(card), tagBg, tagText: labelOn(tagBg) };
-  }
-
-  const theme = (id: ThemeId, bg: string): Theme => ({
-    id, label: THEME_LABELS[id], bg, headline: textOn(bg), text: bodyOn(bg), button: buttonFor(bg), property: propertyFor(bg),
-  });
-
-  // Color block: the accent, unless it's the same as the dark/light background (e.g. a black & white palette).
-  const blockBg = pick([accent, ...brand].filter((c) => c !== darkest && c !== lightest).concat(accent));
-  return [theme("dark", darkest), theme("light", lightest), theme("block", blockBg)];
-}
-
-export function themesToCss(themes: Theme[]): string {
-  return themes
-    .map((t) => {
-      const n = t.button.normal, h = t.button.hover;
-      return [
-        `.theme-${t.id} {`,
-        `  --bg: ${t.bg};`,
-        `  --headline: ${t.headline};`,
-        `  --text: ${t.text};`,
-        `  --button-border: ${n.border};`,
-        `  --button-fill: ${n.fill};`,
-        `  --button-text: ${n.text};`,
-        `  --button-border-hover: ${h.border};`,
-        `  --button-fill-hover: ${h.fill};`,
-        `  --button-text-hover: ${h.text};`,
-        ...(t.property
-          ? [
-              `  --property-card-bg: ${t.property.cardBg};`,
-              `  --property-card-text: ${t.property.cardText};`,
-              `  --property-tag-bg: ${t.property.tagBg};`,
-              `  --property-tag-text: ${t.property.tagText};`,
-            ]
-          : []),
-        `}`,
-      ].join("\n");
-    })
-    .join("\n\n");
+  // Amenities use the button color and white text by default; a light button needs dark text instead.
+  if (bestOn(accent, [darkest, light]) !== light) values["--typography-ammenities"] = darkest;
+  return values;
 }
 
 /** WCAG rating for normal-size text. */

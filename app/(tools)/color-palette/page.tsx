@@ -10,7 +10,7 @@ export default function ColorPalettePage() {
   return (
     <>
       <ToolHeader title="Color palette">
-        Pull a palette from a screenshot, then try it on dark, light, and color-block layouts. Everything stays in your browser.
+        Pull a palette from a screenshot, preview it on light and dark themes, and copy the :root for your template. Everything stays in your browser.
       </ToolHeader>
       <ColorPaletteLoader />
     </>

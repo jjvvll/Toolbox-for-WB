@@ -6,22 +6,30 @@ import CopyButton from "@/components/copy-button";
 import { buildPalette } from "../logo-to-svg/lib/palette";
 import {
   POOL_MODES,
-  PROPERTY_DEFAULTS,
-  TRANSPARENT,
-  autoThemes,
+  ROOT_DEFAULTS,
+  TEMPLATES,
+  TEXT_CASES,
+  autoRoot,
+  bestOn,
   colorPool,
   contrast,
   hexToRgb,
+  linkOf,
   paletteNotes,
   rating,
   rgbToHex,
-  solid,
-  themesToCss,
-  type ButtonColors,
+  rootEntries,
+  rootHex,
+  rootToCss,
+  varsFor,
+  withAlpha,
   type PoolGroup,
   type PoolMode,
-  type PropertyColors,
-  type Theme,
+  type RootValues,
+  type RootVar,
+  type RootVarName,
+  type TemplateId,
+  type TextCase,
 } from "./lib/color";
 import {
   DEFAULT_FONT,
@@ -29,7 +37,6 @@ import {
   FONT_CATEGORY_LABELS,
   FONT_PAIRS,
   cssFamily,
-  fontsToCss,
   googleFontsUrl,
   pairFor,
   type FontChoice,
@@ -54,7 +61,17 @@ type Swatch = { hex: string; share?: number; active?: boolean };
 /** The colors used for styling: every palette color that hasn't been switched off. */
 const activeHex = (list: Swatch[]) => list.filter((s) => s.active !== false).map((s) => s.hex);
 type Sample = { headline: string; text: string; button: string };
-type Saved = { palette: Swatch[]; themes: Theme[]; sample: Sample; customized: boolean; mode?: PoolMode; font?: FontChoice };
+type Saved = {
+  palette: Swatch[];
+  sample: Sample;
+  customized: boolean;
+  mode?: PoolMode;
+  font?: FontChoice;
+  template?: TemplateId;
+  /** Missing in data saved before the :root variables, which is re-assigned from the palette. */
+  values?: RootValues;
+  textCase?: TextCase;
+};
 
 const STORAGE_KEY = "color-palette:v1";
 const SAMPLE: Sample = {
@@ -112,12 +129,14 @@ export default function ColorPaletteTool() {
   const [count, setCount] = useState(8);
   const [palette, setPalette] = useState<Swatch[]>(saved?.palette ?? []);
   const [mode, setMode] = useState<PoolMode>(saved?.mode ?? "neutrals");
-  const [themes, setThemes] = useState<Theme[]>(() => {
-    const auto = autoThemes(activeHex(saved?.palette ?? []), saved?.mode ?? "neutrals");
-    // Themes saved before every container had a property card get auto-assigned card colors.
-    return saved?.themes?.map((t) => (t.property ? t : { ...t, property: auto.find((a) => a.id === t.id)?.property })) ?? auto;
+  const [template, setTemplate] = useState<TemplateId>(saved?.template ?? "visionary");
+  const [textCase, setTextCase] = useState<TextCase>(saved?.textCase ?? "uppercase");
+  const [values, setValues] = useState<RootValues>(() => {
+    if (saved?.values) return saved.values;
+    const used = activeHex(saved?.palette ?? []);
+    return used.length ? autoRoot(used, saved?.mode ?? "neutrals") : ROOT_DEFAULTS;
   });
-  const [customized, setCustomized] = useState(saved?.customized ?? false);
+  const [customized, setCustomized] = useState(saved?.values ? saved.customized : false);
   const [sample, setSample] = useState<Sample>(saved?.sample ?? SAMPLE);
   const [font, setFont] = useState<FontChoice>(saved?.font ?? DEFAULT_FONT);
   const fonts = pairFor(font);
@@ -133,16 +152,16 @@ export default function ColorPaletteTool() {
   // Remember the palette and assignments (not the screenshot) in this browser.
   useEffect(() => {
     try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify({ palette, themes, sample, customized, mode, font } satisfies Saved));
+      localStorage.setItem(STORAGE_KEY, JSON.stringify({ palette, values, sample, customized, mode, font, template, textCase } satisfies Saved));
     } catch {
       // storage unavailable; fine
     }
-  }, [palette, themes, sample, customized, mode, font]);
+  }, [palette, values, sample, customized, mode, font, template, textCase]);
 
   const applyPalette = useCallback((next: Swatch[], keepAssignments: boolean) => {
     setPalette(next);
     if (!keepAssignments && activeHex(next).length) {
-      setThemes(autoThemes(activeHex(next), mode));
+      setValues(autoRoot(activeHex(next), mode));
       setCustomized(false);
     }
   }, [mode]);
@@ -152,8 +171,8 @@ export default function ColorPaletteTool() {
 
   function changeMode(next: PoolMode) {
     setMode(next);
-    if (!customized || window.confirm("Re-assign the layout colors for this option? (Cancel keeps your current choices.)")) {
-      setThemes(autoThemes(activeHex(palette), next));
+    if (!customized || window.confirm("Re-assign the variables for this option? (Cancel keeps your current choices.)")) {
+      setValues(autoRoot(activeHex(palette), next));
       setCustomized(false);
     }
   }
@@ -198,7 +217,7 @@ export default function ColorPaletteTool() {
     });
     fullCanvas.current = toCanvas(img, 4000).ctx;
     setError(null);
-    applyPalette(extract(img, count), customized && !window.confirm("Re-assign the theme colors from this screenshot? (Cancel keeps your current assignments.)"));
+    applyPalette(extract(img, count), customized && !window.confirm("Re-assign the variables from this screenshot? (Cancel keeps your current assignments.)"));
   }, [applyPalette, count, customized]);
 
   // Paste a screenshot anywhere on the page.
@@ -246,8 +265,18 @@ export default function ColorPaletteTool() {
     }
   }
 
-  function updateTheme(id: Theme["id"], fn: (t: Theme) => Theme) {
-    setThemes((ts) => ts.map((t) => (t.id === id ? fn(t) : t)));
+  function setVar(name: RootVarName, hex: string) {
+    setValues((v) => ({ ...v, [name]: hex }));
+    setCustomized(true);
+  }
+
+  /** Clears a hand-set color so the variable follows its link again. */
+  function relinkVar(name: RootVarName) {
+    setValues((v) => {
+      const next = { ...v };
+      delete next[name];
+      return next;
+    });
     setCustomized(true);
   }
 
@@ -356,7 +385,7 @@ export default function ColorPaletteTool() {
             )}
             <div className="ml-auto flex flex-wrap gap-2">
               <button type="button" className={button}
-                disabled={!used.length} onClick={() => { autoVariant.current += 1; setThemes(autoThemes(used, mode, autoVariant.current)); setCustomized(false); }}>
+                disabled={!used.length} onClick={() => { autoVariant.current += 1; setValues(autoRoot(used, mode, autoVariant.current)); setCustomized(false); }}>
                 ↻ Auto-assign
               </button>
               {palette.length > 0 && <CopyButton text={hexes.join(", ")} label="Copy" className="py-1.5 text-sm" />}
@@ -406,7 +435,7 @@ export default function ColorPaletteTool() {
           )}
 
           <fieldset className="mt-auto border-t border-zinc-200 pt-3 dark:border-zinc-800">
-            <legend className="mb-2 text-xs font-semibold">Layouts may use</legend>
+            <legend className="mb-2 text-xs font-semibold">Variables may use</legend>
             <div className="grid gap-2 sm:grid-cols-3">
               {POOL_MODES.map((m) => (
                 <label key={m.id} className={`flex cursor-pointer items-start gap-2 rounded-lg border p-2 text-xs ${
@@ -442,26 +471,43 @@ export default function ColorPaletteTool() {
         </div>
       </section>
 
-      {/* 3. Fonts */}
+      {/* 3. Fonts (preview only) */}
       <FontPicker value={font} onChange={setFont} />
 
-      {/* 4. Three simulations */}
-      <section className="grid gap-4 xl:grid-cols-3">
-        {themes.map((t) => (
-          <ThemeCard key={t.id} theme={t} pool={pool} sample={sample} fonts={fonts} onChange={(fn) => updateTheme(t.id, fn)} />
-        ))}
+      {/* 4. Template, light and dark previews */}
+      <section className="flex flex-col gap-3">
+        <div className="flex flex-wrap items-center gap-2">
+          <h2 className="text-sm font-semibold">Template</h2>
+          <div role="tablist" aria-label="Template" className="inline-flex rounded-md border border-zinc-300 p-0.5 text-xs dark:border-zinc-700">
+            {TEMPLATES.map((t) => (
+              <button key={t.id} type="button" role="tab" aria-selected={template === t.id} onClick={() => setTemplate(t.id)}
+                className={`rounded px-2.5 py-1 font-medium ${template === t.id ? "bg-blue-600 text-white" : "text-zinc-600 dark:text-zinc-400"}`}>
+                {t.label}
+              </button>
+            ))}
+          </div>
+        </div>
+        <div className="grid gap-4 lg:grid-cols-2">
+          {(["light", "dark"] as const).map((side) => (
+            <ThemePreview key={side} side={side} template={template} values={values} textCase={textCase} sample={sample} fonts={fonts} />
+          ))}
+        </div>
       </section>
 
+      {/* 5. Every variable in the template's :root */}
+      <VariablesPanel template={template} values={values} pool={pool} textCase={textCase}
+        onTextCase={setTextCase} onSet={setVar} onRelink={relinkVar} />
+
       <CodePanel
-        css={`${fontsToCss(fonts)}\n\n${themesToCss(themes)}`}
-        json={JSON.stringify({ palette: hexes, used, fonts: { heading: fonts.heading, body: fonts.body }, themes }, null, 2)}
+        css={rootToCss(template, values, textCase)}
+        json={JSON.stringify({ template, palette: hexes, used, variables: Object.fromEntries(rootEntries(template, values, textCase)) }, null, 2)}
       />
       <p className="text-xs text-zinc-500">Your palette and colors are saved in this browser. The screenshot isn’t stored.</p>
     </div>
   );
 }
 
-type Slot = { key: string; label: string; short?: string; value: string; allowTransparent?: boolean; set: (hex: string) => void };
+type Slot = { label: string; hint: string; value: string; set: (hex: string) => void };
 
 function FontPicker({ value, onChange }: { value: FontChoice; onChange: (c: FontChoice) => void }) {
   const [category, setCategory] = useState(value.category);
@@ -471,7 +517,7 @@ function FontPicker({ value, onChange }: { value: FontChoice; onChange: (c: Font
   return (
     <section className="flex flex-col gap-3 rounded-xl border border-zinc-200 p-3 dark:border-zinc-800">
       <div className="flex flex-wrap items-center gap-2">
-        <h2 className="text-sm font-semibold">Fonts</h2>
+        <h2 className="text-sm font-semibold">Fonts <span className="font-normal text-zinc-500">(preview only, not exported)</span></h2>
         <div role="tablist" aria-label="Font style" className="inline-flex rounded-md border border-zinc-300 p-0.5 text-xs dark:border-zinc-700">
           {FONT_CATEGORIES.map((c) => (
             <button key={c} type="button" role="tab" aria-selected={category === c} onClick={() => setCategory(c)}
@@ -508,116 +554,97 @@ function FontPicker({ value, onChange }: { value: FontChoice; onChange: (c: Font
   );
 }
 
-function ThemeCard({ theme: t, pool, sample, fonts, onChange }: {
-  theme: Theme;
-  pool: PoolGroup[];
+/**
+ * One theme on its main background. Buttons alternate: --accent-button on light, --accent-light on dark.
+ * Button text uses whichever typography color reads better; on hover the fill clears, leaving an outline.
+ */
+function ThemePreview({ side, template, values, textCase, sample, fonts }: {
+  side: "light" | "dark";
+  template: TemplateId;
+  values: RootValues;
+  textCase: TextCase;
   sample: Sample;
   fonts: FontPair;
-  onChange: (fn: (t: Theme) => Theme) => void;
 }) {
-  const [state, setState] = useState<"normal" | "hover">("normal");
   const [forceHover, setForceHover] = useState(false);
-  const n = t.button.normal, h = t.button.hover;
-  const shown = forceHover ? h : n;
-
-  const setButton = (which: "normal" | "hover", part: keyof ButtonColors, hex: string) =>
-    onChange((th) => ({ ...th, button: { ...th.button, [which]: { ...th.button[which], [part]: hex } } }));
-
-  const base: Slot[] = [
-    { key: "bg", label: "Background", short: "BG", value: t.bg, set: (v) => onChange((th) => ({ ...th, bg: v })) },
-    { key: "headline", label: "Headline", value: t.headline, set: (v) => onChange((th) => ({ ...th, headline: v })) },
-    { key: "text", label: "Text", value: t.text, set: (v) => onChange((th) => ({ ...th, text: v })) },
-  ];
-  // Every container has a property card; themes saved before it existed fall back to the defaults.
-  const prop = t.property ?? PROPERTY_DEFAULTS;
-  const setProp = (part: keyof PropertyColors, hex: string) =>
-    onChange((th) => ({ ...th, property: { ...(th.property ?? PROPERTY_DEFAULTS), [part]: hex } }));
-  const propSlots: Slot[] = [
-    { key: "p-cardBg", label: "Property card BG", short: "Card BG", value: prop.cardBg, set: (v) => setProp("cardBg", v) },
-    { key: "p-cardText", label: "Property card typography", short: "Card text", value: prop.cardText, set: (v) => setProp("cardText", v) },
-    { key: "p-tagBg", label: "Property tag BG", short: "Tag BG", value: prop.tagBg, set: (v) => setProp("tagBg", v) },
-    { key: "p-tagText", label: "Property tag typography", short: "Tag text", value: prop.tagText, set: (v) => setProp("tagText", v) },
-  ];
-  const btn = t.button[state];
-  const buttonSlots: Slot[] = (["border", "fill", "text"] as const).map((part) => ({
-    key: `${state}-${part}`,
-    label: part === "border" ? "Border" : part === "fill" ? "Fill" : "Text",
-    value: btn[part],
-    allowTransparent: part !== "text",
-    set: (v) => setButton(state, part, v),
-  }));
+  const v = (name: RootVarName) => rootHex(values, name, template);
+  const isLight = side === "light";
+  const bg = v(isLight ? "--primary-light-bg" : "--primary-dark-bg");
+  const ink = v(isLight ? "--typography-dark" : "--typography-light");
+  const fill = v(isLight ? "--accent-button" : "--accent-light");
+  const label = bestOn(fill, [v("--typography-light"), v("--typography-dark")]);
+  const hoverText = contrast(fill, bg) >= 3 ? fill : ink;
+  const stateColor = isLight ? "dark" : "light";
+  const hasAmenities = varsFor(template).some((x) => x.name === "--accent-ammenities");
+  const amenityBg = v("--accent-ammenities"), amenityText = v("--typography-ammenities");
+  const amenities = (className: string) => (
+    <ul className={`flex flex-wrap gap-1.5 ${className}`} style={{ fontFamily: cssFamily(fonts.body) }}>
+      {["Pool", "Garage", "Waterfront"].map((a) => (
+        <li key={a} className="px-2 py-1 text-[10px] font-bold leading-none tracking-wider"
+          style={{ background: amenityBg, color: amenityText, textTransform: textCase }}>
+          {a}
+        </li>
+      ))}
+    </ul>
+  );
 
   const checks = [
-    { label: "Headline", ratio: contrast(t.headline, t.bg) },
-    { label: "Text", ratio: contrast(t.text, t.bg) },
-    { label: "Button", ratio: contrast(solid(n.text, t.bg), solid(n.fill, t.bg)) },
-    { label: "Button hover", ratio: contrast(solid(h.text, t.bg), solid(h.fill, t.bg)) },
-    { label: "Card text", ratio: contrast(prop.cardText, prop.cardBg) },
-    { label: "Tag text", ratio: contrast(prop.tagText, prop.tagBg) },
+    { label: "Text", ratio: contrast(ink, bg) },
+    { label: "Button", ratio: contrast(label, fill) },
+    { label: "Button hover", ratio: contrast(hoverText, bg) },
+    { label: "Card text", ratio: contrast(v("--typography-card"), v("--accent-card")) },
+    { label: "Tag text", ratio: contrast(v("--typography-tag"), v("--accent-tag")) },
+    ...(hasAmenities
+      ? [
+          { label: "Amenity text", ratio: contrast(amenityText, amenityBg) },
+          { label: "Amenity on BG", ratio: contrast(amenityBg, bg) },
+        ]
+      : []),
   ];
 
-  const vars = {
-    "--b-border": n.border, "--b-fill": n.fill, "--b-text": n.text,
-    "--h-border": h.border, "--h-fill": h.fill, "--h-text": h.text,
+  const buttonVars = {
+    "--b-border": fill, "--b-fill": fill, "--b-text": label,
+    "--h-border": fill, "--h-fill": "transparent", "--h-text": hoverText,
   } as React.CSSProperties;
 
   return (
     <article className="flex flex-col overflow-hidden rounded-2xl border border-zinc-200 dark:border-zinc-800">
-      {/* Preview */}
-      <div className="flex min-h-64 flex-col justify-center gap-3 p-6 sm:p-8" style={{ background: t.bg }}>
-        <span className="text-[11px] font-semibold uppercase tracking-wider opacity-70" style={{ color: t.text }}>{t.label}</span>
-        <h3 className="text-2xl leading-tight tracking-tight" style={{ color: t.headline, fontFamily: cssFamily(fonts.heading), fontWeight: fonts.heading.weight }}>{sample.headline}</h3>
-        <p className="text-sm leading-relaxed" style={{ color: t.text, fontFamily: cssFamily(fonts.body), fontWeight: fonts.body.weight }}>{sample.text}</p>
-        <div>
+      <div className="flex min-h-64 flex-1 flex-col gap-3 p-6 sm:p-8" style={{ background: bg }}>
+        <span className="text-[11px] font-semibold uppercase tracking-wider opacity-70" style={{ color: ink }}>{isLight ? "Light" : "Dark"}</span>
+        <h3 className="text-2xl leading-tight tracking-tight" style={{ color: ink, fontFamily: cssFamily(fonts.heading), fontWeight: fonts.heading.weight, textTransform: textCase }}>{sample.headline}</h3>
+        <p className="text-sm leading-relaxed" style={{ color: ink, fontFamily: cssFamily(fonts.body), fontWeight: fonts.body.weight }}>{sample.text}</p>
+        <div className="flex flex-wrap items-center gap-2">
           <button
             type="button"
-            style={forceHover ? { borderColor: shown.border, background: shown.fill, color: shown.text } : vars}
+            style={forceHover ? { borderColor: fill, background: "transparent", color: hoverText, textTransform: textCase } : { ...buttonVars, textTransform: textCase }}
             className={`rounded-lg border-2 px-5 py-2.5 text-sm font-semibold transition-colors ${
               forceHover ? "" : "[background:var(--b-fill)] [border-color:var(--b-border)] [color:var(--b-text)] hover:[background:var(--h-fill)] hover:[border-color:var(--h-border)] hover:[color:var(--h-text)]"
             }`}
           >
             {sample.button}
           </button>
+          {/* Inactive and active states, such as filter or tab buttons. */}
+          <span className="border px-3 py-1.5 text-xs" style={{
+            background: withAlpha(v(`--background-${stateColor}-inactive`), 0.1),
+            borderColor: withAlpha(v(`--border-${stateColor}-inactive`), 0.3),
+            color: ink, textTransform: textCase,
+          }}>Inactive</span>
+          <span className="border px-3 py-1.5 text-xs" style={{ borderColor: v(`--border-${stateColor}-active`), color: ink, textTransform: textCase }}>Active</span>
         </div>
-        <PropertyCard colors={prop} fonts={fonts} />
+        <div className="mt-2 flex flex-wrap items-start gap-3">
+          {/* Amenities look like the tag and can sit inside the card or outside it, depending on the element. */}
+          <PropertyCard template={template} values={values} textCase={textCase} fonts={fonts}>
+            {hasAmenities && amenities("mt-1")}
+          </PropertyCard>
+          {hasAmenities && amenities("sm:flex-col")}
+        </div>
       </div>
 
-      {/* Controls: compact rows of swatches */}
-      <div className="flex flex-col gap-2.5 px-3 py-3">
-        <div className="flex items-start gap-2">
-          <div className="min-w-0 flex-1">
-            <p className="mb-0.5 text-[10px] font-semibold uppercase tracking-wide text-zinc-500">Container</p>
-            <div className="flex gap-1">{base.map((s) => <ColorSlot key={s.key} slot={s} pool={pool} />)}</div>
-          </div>
-          <span className="self-stretch border-l border-zinc-200 dark:border-zinc-800" aria-hidden />
-          <div className="min-w-0 flex-1">
-            <p className="mb-0.5 truncate text-[10px] font-semibold uppercase tracking-wide text-zinc-500">
-              Button · {state === "normal" ? "Normal" : "Hover"}
-            </p>
-            <div className="flex gap-1">{buttonSlots.map((s) => <ColorSlot key={s.key} slot={s} pool={pool} alignRight />)}</div>
-          </div>
-        </div>
-
-        <div>
-          <p className="mb-0.5 text-[10px] font-semibold uppercase tracking-wide text-zinc-500">Property card</p>
-          <div className="flex gap-1">{propSlots.map((s) => <ColorSlot key={s.key} slot={s} pool={pool} />)}</div>
-        </div>
-
-        <div className="flex flex-wrap items-center gap-2 text-[11px]">
-          <div role="tablist" aria-label="Button state" className="inline-flex rounded-md border border-zinc-300 p-0.5 dark:border-zinc-700">
-            {(["normal", "hover"] as const).map((s) => (
-              <button key={s} type="button" role="tab" aria-selected={state === s} onClick={() => setState(s)}
-                className={`rounded px-2 py-0.5 font-medium ${state === s ? "bg-blue-600 text-white" : "text-zinc-600 dark:text-zinc-400"}`}>
-                {s === "normal" ? "Normal" : "Hover"}
-              </button>
-            ))}
-          </div>
-          <label className="flex items-center gap-1 text-zinc-600 dark:text-zinc-400">
-            <input type="checkbox" checked={forceHover} onChange={(e) => setForceHover(e.target.checked)} className="accent-blue-600" />
-            Preview hover
-          </label>
-        </div>
-
+      <div className="flex flex-col gap-2 px-3 py-3">
+        <label className="flex items-center gap-1 text-[11px] text-zinc-600 dark:text-zinc-400">
+          <input type="checkbox" checked={forceHover} onChange={(e) => setForceHover(e.target.checked)} className="accent-blue-600" />
+          Preview button hover
+        </label>
         <ul className="flex flex-wrap gap-1 text-[10px]">
           {checks.map((c) => {
             const r = rating(c.ratio);
@@ -635,34 +662,99 @@ function ThemeCard({ theme: t, pool, sample, fonts, onChange }: {
 }
 
 /** Sample real-estate listing card: photo placeholder with a tag, then price, address and details. */
-function PropertyCard({ colors: c, fonts }: { colors: PropertyColors; fonts: FontPair }) {
+function PropertyCard({ template, values, textCase, fonts, children }: {
+  template: TemplateId;
+  values: RootValues;
+  textCase: TextCase;
+  fonts: FontPair;
+  children?: React.ReactNode;
+}) {
+  const v = (name: RootVarName) => rootHex(values, name, template);
   return (
-    <div className="mt-2 w-full max-w-xs overflow-hidden" style={{ background: c.cardBg, color: c.cardText, fontFamily: cssFamily(fonts.body) }}>
+    <div className="w-full max-w-xs overflow-hidden" style={{ background: v("--accent-card"), color: v("--typography-card"), fontFamily: cssFamily(fonts.body) }}>
       <div className="relative flex aspect-[2/1] items-center justify-center bg-zinc-300 text-zinc-500">
         <svg viewBox="0 0 24 24" className="h-8 w-8" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
           <rect x="3" y="4" width="18" height="16" rx="2" />
           <circle cx="8.5" cy="9.5" r="1.5" />
           <path d="m21 16-5-5-8 9" />
         </svg>
-        <span className="absolute right-2 top-2 px-2 py-1 text-[10px] font-bold uppercase leading-none tracking-wider"
-          style={{ background: c.tagBg, color: c.tagText }}>
+        <span className="absolute right-2 top-2 px-2 py-1 text-[10px] font-bold leading-none tracking-wider"
+          style={{ background: v("--accent-tag"), color: v("--typography-tag"), textTransform: textCase }}>
           For sale
         </span>
       </div>
       <div className="flex flex-col gap-1.5 px-4 py-3.5">
         <p className="text-2xl leading-none" style={{ fontFamily: cssFamily(fonts.heading), fontWeight: fonts.heading.weight }}>$289,000</p>
-        <p className="text-xs font-bold uppercase leading-snug tracking-wide">24557 Meadows Trail, Perry, MO 63462</p>
-        <p className="text-[10px] uppercase tracking-wider opacity-90">3 Beds | 2 Baths | 2,000 Sq.Ft.</p>
+        <p className="text-xs font-bold leading-snug tracking-wide" style={{ textTransform: textCase }}>24557 Meadows Trail, Perry, MO 63462</p>
+        <p className="text-[10px] tracking-wider opacity-90" style={{ textTransform: textCase }}>3 Beds | 2 Baths | 2,000 Sq.Ft.</p>
+        {children}
       </div>
     </div>
   );
 }
 
-const CHECKER ="repeating-conic-gradient(#d4d4d8 0% 25%, #ffffff 0% 50%) 50% / 10px 10px";
+/** Every color in the template's :root, grouped. Linked ones follow their source until set by hand. */
+function VariablesPanel({ template, values, pool, textCase, onTextCase, onSet, onRelink }: {
+  template: TemplateId;
+  values: RootValues;
+  pool: PoolGroup[];
+  textCase: TextCase;
+  onTextCase: (c: TextCase) => void;
+  onSet: (name: RootVarName, hex: string) => void;
+  onRelink: (name: RootVarName) => void;
+}) {
+  const vars = varsFor(template);
+  const groups = [...new Set(vars.map((x) => x.group))];
+  const opacity = (x: RootVar) => (x.alpha === undefined ? "" : ` · ${x.alpha * 100}%`);
+
+  return (
+    <section className="flex flex-col gap-3 rounded-xl border border-zinc-200 p-3 sm:p-4 dark:border-zinc-800">
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+        <h2 className="text-sm font-semibold">Variables</h2>
+        <span className="text-xs text-zinc-500">Linked colors follow their source. Pick a color to override one.</span>
+        <label className="ml-auto flex items-center gap-1.5 font-mono text-[11px]">
+          --text-case
+          <select value={textCase} onChange={(e) => onTextCase(e.target.value as TextCase)}
+            className="rounded-md border border-zinc-300 bg-background px-1.5 py-1 dark:border-zinc-700">
+            {TEXT_CASES.map((c) => <option key={c} value={c}>{c}</option>)}
+          </select>
+        </label>
+      </div>
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+        {groups.map((group) => (
+          <div key={group} className="min-w-0">
+            <h3 className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-zinc-500">{group}</h3>
+            <ul className="flex flex-col gap-0.5">
+              {vars.filter((x) => x.group === group).map((x) => {
+                const link = linkOf(x, template);
+                const overridden = !!link && !!values[x.name];
+                const hex = rootHex(values, x.name, template);
+                const hint = link && !overridden ? `= ${link}${opacity(x)}` : `${hex}${opacity(x)}`;
+                return (
+                  <li key={x.name} className="flex items-center gap-1">
+                    <ColorSlot slot={{ label: x.name, hint, value: hex, set: (c) => onSet(x.name, c) }} pool={pool} />
+                    {overridden && (
+                      <button type="button" onClick={() => onRelink(x.name)} aria-label={`Link ${x.name} to ${link} again`}
+                        title={`Link to ${link} again`}
+                        className="shrink-0 rounded px-1.5 py-1 text-[11px] text-blue-600 hover:underline dark:text-blue-400">
+                        Relink
+                      </button>
+                    )}
+                  </li>
+                );
+              })}
+            </ul>
+          </div>
+        ))}
+      </div>
+    </section>
+  );
+}
+
 const POPOVER_WIDTH = 224;
 const GAP = 6;
 
-function ColorSlot({ slot, pool, alignRight = false }: { slot: Slot; pool: PoolGroup[]; alignRight?: boolean }) {
+function ColorSlot({ slot, pool }: { slot: Slot; pool: PoolGroup[] }) {
   const [open, setOpen] = useState(false);
   const [pos, setPos] = useState<{ top: number; left: number } | null>(null);
   const trigger = useRef<HTMLButtonElement>(null);
@@ -675,13 +767,12 @@ function ColorSlot({ slot, pool, alignRight = false }: { slot: Slot; pool: PoolG
     const h = popover.current?.offsetHeight ?? 0;
     if (!t) return;
     const vw = window.innerWidth, vh = window.innerHeight;
-    let left = alignRight ? t.right - POPOVER_WIDTH : t.left;
-    left = Math.max(8, Math.min(left, vw - POPOVER_WIDTH - 8));
+    const left = Math.max(8, Math.min(t.left, vw - POPOVER_WIDTH - 8));
     const below = t.bottom + GAP;
     const above = t.top - GAP - h;
     const top = below + h <= vh - 8 || above < 8 ? Math.min(below, Math.max(8, vh - h - 8)) : above;
     setPos({ top, left });
-  }, [alignRight]);
+  }, []);
 
   useLayoutEffect(() => {
     if (open) place();
@@ -712,7 +803,6 @@ function ColorSlot({ slot, pool, alignRight = false }: { slot: Slot; pool: PoolG
     };
   }, [open, place]);
 
-  const isTransparent = slot.value === TRANSPARENT;
   const choose = (value: string) => {
     slot.set(value);
     setOpen(false);
@@ -730,11 +820,14 @@ function ColorSlot({ slot, pool, alignRight = false }: { slot: Slot; pool: PoolG
         aria-expanded={open}
         aria-label={`${slot.label}: ${slot.value}. Change color`}
         title={`${slot.label}: ${slot.value}`}
-        className="group flex w-full flex-col items-center gap-0.5 rounded-md p-0.5 hover:bg-zinc-100 dark:hover:bg-zinc-900"
+        className="group flex w-full items-center gap-2 rounded-md p-1 text-left hover:bg-zinc-100 dark:hover:bg-zinc-900"
       >
-        <span className="h-6 w-full max-w-9 rounded border border-black/15 ring-blue-500 group-aria-expanded:ring-2"
-          style={{ background: isTransparent ? CHECKER : slot.value }} />
-        <span className="w-full truncate text-center text-[10px] leading-tight text-zinc-600 dark:text-zinc-400">{slot.short ?? slot.label}</span>
+        <span className="h-7 w-7 shrink-0 rounded border border-black/15 ring-blue-500 group-aria-expanded:ring-2"
+          style={{ background: slot.value }} />
+        <span className="min-w-0 flex-1">
+          <span className="block truncate font-mono text-[11px] leading-tight">{slot.label}</span>
+          <span className="block truncate text-[10px] leading-tight text-zinc-500">{slot.hint}</span>
+        </span>
       </button>
       {open &&
         createPortal(
@@ -750,15 +843,10 @@ function ColorSlot({ slot, pool, alignRight = false }: { slot: Slot; pool: PoolG
               <span className="font-mono text-zinc-500">{slot.value}</span>
             </p>
             <div className="flex max-h-60 flex-col gap-2 overflow-y-auto">
-              {groups.map((g, gi) => (
+              {groups.map((g) => (
                 <div key={g.label}>
                   <p className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-zinc-500">{g.label}</p>
                   <div className="grid grid-cols-6 gap-1.5">
-                    {/* Button border/fill: "transparent" is always offered first. */}
-                    {gi === 0 && slot.allowTransparent && (
-                      <button type="button" title="Transparent" aria-label="Use transparent" onClick={() => choose(TRANSPARENT)}
-                        className={swatchClass(isTransparent)} style={{ background: CHECKER }} />
-                    )}
                     {g.colors.map((hex) => (
                       <button key={hex} type="button" title={hex} aria-label={`Use ${hex}`} onClick={() => choose(hex)}
                         className={swatchClass(hex === slot.value)} style={{ background: hex }} />
@@ -766,16 +854,10 @@ function ColorSlot({ slot, pool, alignRight = false }: { slot: Slot; pool: PoolG
                   </div>
                 </div>
               ))}
-              {!groups.length && slot.allowTransparent && (
-                <div className="grid grid-cols-6 gap-1.5">
-                  <button type="button" title="Transparent" aria-label="Use transparent" onClick={() => choose(TRANSPARENT)}
-                    className={swatchClass(isTransparent)} style={{ background: CHECKER }} />
-                </div>
-              )}
               {!groups.length && <p className="text-xs text-zinc-500">No palette yet; add a screenshot or hex codes, or use a custom color.</p>}
             </div>
             <label className="mt-2 flex cursor-pointer items-center gap-2 border-t border-zinc-200 pt-2 text-xs dark:border-zinc-800">
-              <input type="color" value={isTransparent ? "#ffffff" : slot.value} onChange={(e) => slot.set(e.target.value)}
+              <input type="color" value={slot.value} onChange={(e) => slot.set(e.target.value)}
                 className="h-7 w-9 cursor-pointer rounded border border-zinc-300 bg-transparent dark:border-zinc-700" />
               Custom color
             </label>
@@ -793,11 +875,11 @@ function CodePanel({ css, json }: { css: string; json: string }) {
 
   // Splits a line into text and color values so each color can show a chip.
   const renderLine = (line: string) =>
-    line.split(/(#[0-9a-f]{6}\b|transparent)/gi).map((part, k) =>
-      /^#[0-9a-f]{6}$/i.test(part) || part === TRANSPARENT ? (
+    line.split(/(#[0-9a-f]{6}\b)/gi).map((part, k) =>
+      /^#[0-9a-f]{6}$/i.test(part) ? (
         <span key={k} className="whitespace-nowrap">
           <span className="mr-1 inline-block h-2.5 w-2.5 translate-y-px rounded-sm border border-black/20 align-baseline"
-            style={{ background: part === TRANSPARENT ? CHECKER : part }} aria-hidden />
+            style={{ background: part }} aria-hidden />
           <span className="text-emerald-700 dark:text-emerald-400">{part}</span>
         </span>
       ) : (
@@ -812,7 +894,7 @@ function CodePanel({ css, json }: { css: string; json: string }) {
           {(["css", "json"] as const).map((t) => (
             <button key={t} type="button" role="tab" aria-selected={tab === t} onClick={() => setTab(t)}
               className={`rounded px-2.5 py-1 font-medium ${tab === t ? "bg-blue-600 text-white" : "text-zinc-600 dark:text-zinc-400"}`}>
-              {t === "css" ? "CSS variables" : "JSON"}
+              {t === "css" ? "CSS :root" : "JSON"}
             </button>
           ))}
         </div>

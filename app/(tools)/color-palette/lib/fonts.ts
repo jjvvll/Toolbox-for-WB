@@ -78,17 +78,3 @@ export function googleFontsUrl(pairs: FontPair[]): string {
   );
   return `https://fonts.googleapis.com/css2?${families.join("&")}&display=swap`;
 }
-
-/** CSS for the export: the font import plus variables. */
-export function fontsToCss(p: FontPair): string {
-  return [
-    `@import url("${googleFontsUrl([p])}");`,
-    "",
-    ":root {",
-    `  --font-heading: ${cssFamily(p.heading)};`,
-    `  --font-heading-weight: ${p.heading.weight};`,
-    `  --font-body: ${cssFamily(p.body)};`,
-    `  --font-body-weight: ${p.body.weight};`,
-    "}",
-  ].join("\n");
-}
