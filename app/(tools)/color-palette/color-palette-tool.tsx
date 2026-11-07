@@ -1,12 +1,12 @@
 "use client";
 
 import { Fragment, useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import Link from "next/link";
 import { createPortal } from "react-dom";
 import CopyButton from "@/components/copy-button";
 import { buildPalette } from "../logo-to-svg/lib/palette";
 import {
   POOL_MODES,
-  ROOT_DEFAULTS,
   TEMPLATES,
   TEXT_CASES,
   autoRoot,
@@ -42,6 +42,7 @@ import {
   type FontChoice,
   type FontPair,
 } from "./lib/fonts";
+import { PALETTE_STORAGE_KEY, activeHex, savedRootValues } from "./lib/saved-root";
 
 /** Loads Google Fonts stylesheets for the given pairs (once per URL) while the component is mounted. */
 function useGoogleFonts(pairs: FontPair[]) {
@@ -57,9 +58,6 @@ function useGoogleFonts(pairs: FontPair[]) {
 
 /** `active: false` keeps a color in the palette without using it for styling. */
 type Swatch = { hex: string; share?: number; active?: boolean };
-
-/** The colors used for styling: every palette color that hasn't been switched off. */
-const activeHex = (list: Swatch[]) => list.filter((s) => s.active !== false).map((s) => s.hex);
 type Sample = { headline: string; text: string; button: string };
 type Saved = {
   palette: Swatch[];
@@ -73,7 +71,6 @@ type Saved = {
   textCase?: TextCase;
 };
 
-const STORAGE_KEY = "color-palette:v1";
 const SAMPLE: Sample = {
   headline: "Build something people love",
   text: "A short paragraph to see how body text reads on this background at a normal size.",
@@ -82,7 +79,7 @@ const SAMPLE: Sample = {
 
 function loadSaved(): Saved | null {
   try {
-    return JSON.parse(localStorage.getItem(STORAGE_KEY) ?? "null");
+    return JSON.parse(localStorage.getItem(PALETTE_STORAGE_KEY) ?? "null");
   } catch {
     return null;
   }
@@ -131,11 +128,7 @@ export default function ColorPaletteTool() {
   const [mode, setMode] = useState<PoolMode>(saved?.mode ?? "neutrals");
   const [template, setTemplate] = useState<TemplateId>(saved?.template ?? "visionary");
   const [textCase, setTextCase] = useState<TextCase>(saved?.textCase ?? "uppercase");
-  const [values, setValues] = useState<RootValues>(() => {
-    if (saved?.values) return saved.values;
-    const used = activeHex(saved?.palette ?? []);
-    return used.length ? autoRoot(used, saved?.mode ?? "neutrals") : ROOT_DEFAULTS;
-  });
+  const [values, setValues] = useState<RootValues>(() => savedRootValues(saved));
   const [customized, setCustomized] = useState(saved?.values ? saved.customized : false);
   const [sample, setSample] = useState<Sample>(saved?.sample ?? SAMPLE);
   const [font, setFont] = useState<FontChoice>(saved?.font ?? DEFAULT_FONT);
@@ -152,7 +145,7 @@ export default function ColorPaletteTool() {
   // Remember the palette and assignments (not the screenshot) in this browser.
   useEffect(() => {
     try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify({ palette, values, sample, customized, mode, font, template, textCase } satisfies Saved));
+      localStorage.setItem(PALETTE_STORAGE_KEY, JSON.stringify({ palette, values, sample, customized, mode, font, template, textCase } satisfies Saved));
     } catch {
       // storage unavailable; fine
     }
@@ -502,7 +495,11 @@ export default function ColorPaletteTool() {
         css={rootToCss(template, values, textCase)}
         json={JSON.stringify({ template, palette: hexes, used, variables: Object.fromEntries(rootEntries(template, values, textCase)) }, null, 2)}
       />
-      <p className="text-xs text-zinc-500">Your palette and colors are saved in this browser. The screenshot isn’t stored.</p>
+      <p className="text-xs text-zinc-500">
+        Your palette and colors are saved in this browser. The screenshot isn’t stored. The{" "}
+        <Link href="/code-editor" className="text-blue-600 hover:underline dark:text-blue-400">Code Editor</Link>{" "}
+        preview uses these variables automatically.
+      </p>
     </div>
   );
 }

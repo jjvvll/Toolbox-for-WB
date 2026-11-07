@@ -108,6 +108,17 @@ export const TOOLS: Tool[] = [
     ),
   },
   {
+    name: "Code Editor",
+    description: "Write HTML and CSS in a VS Code-style editor with a live preview.",
+    href: "/code-editor",
+    accent: "bg-cyan-100 text-cyan-600 dark:bg-cyan-500/15 dark:text-cyan-400",
+    icon: (
+      <Icon>
+        <path d="m8 7-5 5 5 5M16 7l5 5-5 5M13.5 5l-3 14" />
+      </Icon>
+    ),
+  },
+  {
     name: "Drive Video Thumbnail",
     description: "Grab and download the thumbnail of a public Google Drive video.",
     href: "/drive-thumbnail",
