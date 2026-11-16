@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect } from "react";
+import { createPortal } from "react-dom";
 
 export default function Modal({
   onClose,
@@ -24,9 +25,14 @@ export default function Modal({
     };
   }, [onClose]);
 
-  return (
+  if (typeof document === "undefined") return null;
+
+  // Rendered into <body>: the tools sit inside a frosted panel, and a backdrop
+  // filter makes its element the box that `fixed` children are placed in, so a
+  // modal left in place would cover the whole panel instead of the screen.
+  return createPortal(
     <div
-      className="fixed inset-0 z-50 flex items-start justify-center bg-black/40 p-4 pt-[10vh] backdrop-blur-[2px]"
+      className="fixed inset-0 z-50 flex items-start justify-center bg-black/40 p-4 pt-[10vh] text-foreground backdrop-blur-[2px]"
       onMouseDown={(e) => e.target === e.currentTarget && onClose()}
     >
       <div
@@ -37,6 +43,7 @@ export default function Modal({
       >
         {children}
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }

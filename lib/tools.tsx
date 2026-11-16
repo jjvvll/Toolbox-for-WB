@@ -119,6 +119,34 @@ export const TOOLS: Tool[] = [
     ),
   },
   {
+    name: "Section Library",
+    description: "Ready-made homepage headings, profile sections and content layouts to copy as HTML and CSS.",
+    href: "/sections",
+    accent: "bg-pink-100 text-pink-600 dark:bg-pink-500/15 dark:text-pink-400",
+    icon: (
+      <Icon>
+        <rect x="3" y="4" width="18" height="7" rx="1.5" />
+        <rect x="3" y="14" width="8" height="6" rx="1.5" />
+        <path d="M14.5 15.5h6M14.5 18.5h4" />
+      </Icon>
+    ),
+  },
+  {
+    name: "Content Checker",
+    description: "Check whether your copy is on a site, and see what's missing or changed.",
+    href: "/content-check",
+    accent: "bg-blue-100 text-blue-600 dark:bg-blue-500/15 dark:text-blue-400",
+    icon: (
+      <Icon>
+        <path d="M11 21H7a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h7l5 5v2.5" />
+        <path d="M14 3v5h5" />
+        <circle cx="16" cy="16" r="3.2" />
+        <path d="m18.4 18.4 2.6 2.6" />
+        <path d="M8.5 12h3" />
+      </Icon>
+    ),
+  },
+  {
     name: "Drive Video Thumbnail",
     description: "Grab and download the thumbnail of a public Google Drive video.",
     href: "/drive-thumbnail",
