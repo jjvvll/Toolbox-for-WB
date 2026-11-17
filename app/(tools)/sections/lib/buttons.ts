@@ -56,7 +56,7 @@ type Item =
   | { type: "at"; prelude: string; items: Item[] };
 
 /** Reads the formatted CSS the library produces into comments, rules and at-rules. */
-function parse(css: string, from = 0): { items: Item[]; end: number } {
+export function parse(css: string, from = 0): { items: Item[]; end: number } {
   const items: Item[] = [];
   let i = from;
   while (i < css.length) {
@@ -83,7 +83,7 @@ function parse(css: string, from = 0): { items: Item[]; end: number } {
   return { items, end: i };
 }
 
-function serialize(items: Item[]): string {
+export function serialize(items: Item[]): string {
   return items
     .map((item) =>
       item.type === "comment"

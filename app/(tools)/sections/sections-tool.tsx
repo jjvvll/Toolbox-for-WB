@@ -5,6 +5,26 @@ import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "reac
 import CopyButton from "@/components/copy-button";
 import { PALETTE_STORAGE_KEY } from "../color-palette/lib/saved-root";
 import Modal from "../notes/modal";
+import {
+  COLOR_PARTS,
+  COLOR_STATES,
+  TRANSPARENT,
+  colorValue,
+  colorVariables,
+  describeColor,
+  designedStyles,
+  FONT_PRESETS,
+  FONT_WEIGHTS,
+  cleanSize,
+  hasColors,
+  resolveColor,
+  withButtonStyles,
+  type ButtonColorSet,
+  type ColorPart,
+  type ColorState,
+  type DesignedStyles,
+  type ButtonText,
+} from "./lib/button-style";
 import { buttonChoices, buttonCount, withButtons, type ButtonCount } from "./lib/buttons";
 import { KINDS, STYLES } from "./lib/catalog";
 import { COLUMNS, ROWS, positionLabel, withPosition, type Position } from "./lib/position";
@@ -19,7 +39,17 @@ type Device = keyof typeof VIEWPORTS;
 type Buttons = { choices: ButtonCount[]; built: number; value: ButtonCount | null };
 
 /** A design ready to copy. `position` is undefined for sections that can't be positioned. */
-type Item = { key: string; snippet: Snippet; position?: Position | null; buttons: Buttons };
+type Item = {
+  key: string;
+  snippet: Snippet;
+  position?: Position | null;
+  buttons: Buttons;
+  colors: ButtonColorSet;
+  /** The button text: a site template's, custom values, or null for as designed. */
+  font: ButtonText | null;
+  /** What each button's colors and text are before any are changed. */
+  designed: DesignedStyles[];
+};
 
 const AUDIENCES: { id: Audience; label: string; detail: string }[] = [
   { id: "agent", label: "Individual", detail: "Agent Name, with a Learn More button to /about" },
@@ -95,6 +125,10 @@ export default function SectionsTool() {
   const [positions, setPositions] = useState<Record<string, Position | null>>({});
   // How many buttons each design shows, by design. Unset means as built.
   const [buttonCounts, setButtonCounts] = useState<Record<string, ButtonCount | null>>({});
+  // Each design's button colors, by design. Unset means as designed.
+  const [buttonColors, setButtonColors] = useState<Record<string, ButtonColorSet>>({});
+  // Each design's button text, by design. Unset means as designed.
+  const [buttonFonts, setButtonFonts] = useState<Record<string, ButtonText | null>>({});
 
   const savedPalette = useSyncExternalStore(subscribeStorage, readSavedPalette, () => null);
   const theme = useMemo(() => readTheme(savedPalette), [savedPalette]);
@@ -112,15 +146,25 @@ export default function SectionsTool() {
           const key = `${style.id}-${kind}-${snippet.id}`;
           const value = buttonCounts[key] ?? null;
           const buttons = { choices: buttonChoices(snippet, kind), built: buttonCount(snippet, kind), value };
-          const counted = withButtons(snippet, kind, value);
-          const filled = { ...counted, html: fillFor(counted.html, audience) };
+          const colors = buttonColors[key] ?? [];
+          const font = buttonFonts[key] ?? null;
+          const sized = withButtons(snippet, kind, value);
+          const designed = designedStyles(sized, kind);
+          const styled = withButtonStyles(sized, kind, colors, font);
+          const filled = { ...styled, html: fillFor(styled.html, audience) };
+          const item = { key, snippet: filled, buttons, colors, font, designed };
           // Only headings sit over a photo; the rest are full-width sections of their own.
-          if (kind !== "opening") return { key, snippet: filled, buttons };
+          if (kind !== "opening") return item;
           const position = positions[key] ?? null;
-          return { key, snippet: withPosition(filled, position), position, buttons };
+          return { ...item, snippet: withPosition(filled, position), position };
         }),
-    [style, kind, audience, byLength, length, positions, buttonCounts],
+    [style, kind, audience, byLength, length, positions, buttonCounts, buttonColors, buttonFonts],
   );
+  const setColors = (key: string, colors: ButtonColorSet) =>
+    setButtonColors((all) => ({ ...all, [key]: colors }));
+  const setFont = (key: string, font: ButtonText | null) =>
+    setButtonFonts((all) => ({ ...all, [key]: font }));
+  const colorVars = useMemo(() => colorVariables(theme.vars), [theme]);
   const setPosition = (key: string, position: Position | null) =>
     setPositions((all) => ({ ...all, [key]: position }));
   const setButtons = (key: string, count: ButtonCount | null) =>
@@ -226,6 +270,12 @@ export default function SectionsTool() {
           Use the Buttons choice on a design to show two buttons, one, or none before copying. The
           HTML and CSS change to match: removed buttons take their CSS with them.
         </p>
+        <p>
+          Click a design to set its button text size and weight from a site template (Producer,
+          Masterpiece or Visionary), and each button&apos;s border, background and text colors, normal
+          and on hover, from the palette&apos;s :root variables or transparent. The choices are written
+          into its CSS as you make them.
+        </p>
         {kind === "opening" && (
           <p>
             Use the grid on a design to choose where it sits over the photo, such as bottom left or
@@ -270,6 +320,12 @@ export default function SectionsTool() {
           onPosition={(position) => setPosition(open.key, position)}
           buttons={open.buttons}
           onButtons={(count) => setButtons(open.key, count)}
+          colors={open.colors}
+          designed={open.designed}
+          onColors={(colors) => setColors(open.key, colors)}
+          font={open.font}
+          onFont={(font) => setFont(open.key, font)}
+          colorVars={colorVars}
           theme={theme}
           onClose={() => setOpenKey(null)}
         />
@@ -361,6 +417,252 @@ function ButtonPicker({ buttons, onChange }: { buttons: Buttons; onChange: (coun
   );
 }
 
+/**
+ * The buttons' text size and weight, from a site template, and each shown button's
+ * border, background and text colors, normal and on hover. Every color is transparent
+ * or one of the palette's :root variables; "As designed" keeps the design's own value,
+ * and says what it is.
+ */
+function ButtonStylePanel({
+  count,
+  colors,
+  designed,
+  onChange,
+  font,
+  onFont,
+  colorVars,
+  theme,
+}: {
+  /** How many buttons the design shows right now. */
+  count: number;
+  colors: ButtonColorSet;
+  designed: DesignedStyles[];
+  onChange: (colors: ButtonColorSet) => void;
+  font: ButtonText | null;
+  onFont: (font: ButtonText | null) => void;
+  colorVars: string[];
+  theme: PreviewTheme;
+}) {
+  if (count === 0) return null;
+  const set = (button: number, state: ColorState, part: ColorPart, choice: string) => {
+    const next = [...colors];
+    const states = { ...next[button] };
+    const parts = { ...states[state] };
+    if (choice) parts[part] = choice;
+    else delete parts[part];
+    states[state] = parts;
+    next[button] = states;
+    onChange(next);
+  };
+  const checkerboard = "repeating-conic-gradient(#d4d4d8 0 25%, #fff 0 50%) 0 0 / 8px 8px";
+  /** The CSS value a cell ends up with: the choice, or the design's own color. */
+  const valueOf = (button: number, state: ColorState, part: ColorPart): string | undefined => {
+    const choice = colors[button]?.[state]?.[part];
+    if (choice) return colorValue(choice);
+    const own = designed[button]?.[state][part];
+    // A border that follows the text takes the text color.
+    return own === "currentColor" ? valueOf(button, state, "text") : own;
+  };
+  const swatch = (value: string | undefined) => {
+    if (!value) return undefined;
+    if (value === TRANSPARENT) return checkerboard;
+    const resolved = resolveColor(value, theme.vars);
+    // See-through colors are drawn over the checkerboard, so their opacity shows.
+    return /gradient|url\(/.test(resolved)
+      ? resolved
+      : `linear-gradient(${resolved}, ${resolved}), ${checkerboard}`;
+  };
+  const designedLabel = (button: number, state: ColorState, part: ColorPart) => {
+    const own = designed[button]?.[state][part];
+    return own ? `As designed (${own === "currentColor" ? "text color" : describeColor(own)})` : "As designed";
+  };
+
+  const buttonLabel = (button: number) =>
+    count > 1 ? (button === 0 ? "First button" : "Second button") : "Button";
+
+  const own = designed[0]?.normal;
+  const textOptions = [
+    { id: null, label: "As designed", size: own?.size ?? "", weight: own?.weight ?? "" },
+    ...FONT_PRESETS,
+  ];
+  const custom = font?.preset === "custom" ? font : null;
+  const sizeValid = !custom || !custom.size.trim() || !!cleanSize(custom.size);
+  // Custom starts from what the buttons show now, ready to adjust.
+  const startCustom = () => {
+    const now = FONT_PRESETS.find((p) => p.id === font?.preset) ?? own;
+    onFont({ preset: "custom", size: now?.size ?? "", weight: now?.weight ?? "" });
+  };
+
+  return (
+    <aside
+      aria-label="Button styles"
+      className="flex flex-col gap-4 border-t border-zinc-200 p-4 lg:w-96 lg:shrink-0 lg:overflow-y-auto lg:border-t-0 lg:border-l dark:border-zinc-800"
+    >
+      <div>
+        <h3 className="text-sm font-medium">Button text</h3>
+        <p className="mt-0.5 text-xs text-zinc-500">
+          Font size and weight for every button, from a site template or your own.
+        </p>
+        <div role="group" aria-label="Button text" className="mt-2 grid grid-cols-2 gap-1.5">
+          {textOptions.map((option) => {
+            const active = (font?.preset ?? null) === option.id;
+            return (
+              <button
+                key={option.label}
+                type="button"
+                aria-pressed={active}
+                onClick={() => onFont(option.id ? { preset: option.id } : null)}
+                className={`flex flex-col items-start rounded-md border px-2.5 py-1.5 text-left transition-colors ${
+                  active
+                    ? "border-blue-600 bg-blue-50 dark:border-blue-500 dark:bg-blue-950/40"
+                    : "border-zinc-300 hover:border-zinc-400 dark:border-zinc-700 dark:hover:border-zinc-500"
+                }`}
+              >
+                <span
+                  className={`text-xs font-medium ${active ? "text-blue-700 dark:text-blue-300" : ""}`}
+                >
+                  {option.label}
+                </span>
+                <span className="text-[11px] text-zinc-500 tabular-nums">
+                  {[option.size, option.weight && `weight ${option.weight}`].filter(Boolean).join(" · ")}
+                </span>
+              </button>
+            );
+          })}
+          <div
+            className={`col-span-2 rounded-md border px-2.5 py-1.5 transition-colors ${
+              custom
+                ? "border-blue-600 bg-blue-50 dark:border-blue-500 dark:bg-blue-950/40"
+                : "border-zinc-300 hover:border-zinc-400 dark:border-zinc-700 dark:hover:border-zinc-500"
+            }`}
+          >
+            <button
+              type="button"
+              aria-pressed={!!custom}
+              onClick={() => !custom && startCustom()}
+              className="flex w-full flex-col items-start text-left"
+            >
+              <span className={`text-xs font-medium ${custom ? "text-blue-700 dark:text-blue-300" : ""}`}>
+                Custom
+              </span>
+              {!custom && <span className="text-[11px] text-zinc-500">Your own size and weight</span>}
+            </button>
+            {custom && (
+              <div className="mt-1.5 grid grid-cols-2 gap-2 pb-0.5">
+                <label className="flex flex-col gap-0.5">
+                  <span className="text-[11px] text-zinc-500">Size</span>
+                  <input
+                    type="text"
+                    inputMode="decimal"
+                    value={custom.size}
+                    placeholder={own?.size ?? "14px"}
+                    aria-invalid={!sizeValid}
+                    onChange={(e) => onFont({ ...custom, size: e.target.value })}
+                    className={`h-7 min-w-0 rounded-md border bg-background px-1.5 text-xs tabular-nums ${
+                      sizeValid ? "border-zinc-300 dark:border-zinc-700" : "border-red-500"
+                    }`}
+                  />
+                </label>
+                <label className="flex flex-col gap-0.5">
+                  <span className="text-[11px] text-zinc-500">Weight</span>
+                  <select
+                    value={custom.weight}
+                    onChange={(e) => onFont({ ...custom, weight: e.target.value })}
+                    className="h-7 min-w-0 rounded-md border border-zinc-300 bg-background px-1.5 text-xs dark:border-zinc-700"
+                  >
+                    <option value="">As designed{own?.weight ? ` (${own.weight})` : ""}</option>
+                    {FONT_WEIGHTS.map((w) => (
+                      <option key={w} value={w}>
+                        {w}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <p className={`col-span-2 text-[11px] ${sizeValid ? "text-zinc-500" : "text-red-600"}`}>
+                  {sizeValid
+                    ? "A number is read as px; rem and em work too. Leave blank to keep the design's."
+                    : "Use a number such as 13, or 13px, 0.8rem or 0.8em."}
+                </p>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+
+      <div>
+        <h3 className="text-sm font-medium">Button colors</h3>
+        <p className="mt-0.5 text-xs text-zinc-500">
+          From the palette&apos;s :root variables, or transparent. Written into the design&apos;s CSS.
+        </p>
+      </div>
+
+      {Array.from({ length: count }, (_, button) => (
+        <section
+          key={button}
+          aria-label={buttonLabel(button)}
+          className="flex flex-col gap-3 rounded-lg border border-zinc-200 p-3 dark:border-zinc-800"
+        >
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-semibold tracking-wide uppercase">{buttonLabel(button)}</span>
+            {hasColors([colors[button] ?? {}]) && (
+              <button
+                type="button"
+                onClick={() => {
+                  const next = [...colors];
+                  next[button] = {};
+                  onChange(next);
+                }}
+                className="text-xs text-blue-600 hover:underline dark:text-blue-400"
+              >
+                Reset
+              </button>
+            )}
+          </div>
+
+          {COLOR_STATES.map((s) => (
+            <fieldset key={s.id} className="flex flex-col gap-1.5">
+              <legend className="mb-1.5 text-[11px] font-medium tracking-wide text-zinc-500 uppercase">
+                {s.label}
+              </legend>
+              {COLOR_PARTS.map((p) => {
+                const choice = colors[button]?.[s.id]?.[p.id];
+                return (
+                  <label key={p.id} className="grid grid-cols-[5rem_1fr] items-center gap-2">
+                    <span className="text-xs text-zinc-600 dark:text-zinc-400">{p.label}</span>
+                    <span className="flex min-w-0 items-center gap-1.5">
+                      <span
+                        aria-hidden
+                        className="size-5 shrink-0 rounded border border-zinc-300 dark:border-zinc-700"
+                        style={{ background: swatch(valueOf(button, s.id, p.id)) }}
+                      />
+                      <select
+                        title={choice ? colorValue(choice) : designedLabel(button, s.id, p.id)}
+                        value={choice ?? ""}
+                        onChange={(e) => set(button, s.id, p.id, e.target.value)}
+                        className={`h-7 min-w-0 flex-1 rounded-md border border-zinc-300 bg-background px-1.5 text-xs dark:border-zinc-700 ${
+                          choice ? "" : "text-zinc-500"
+                        }`}
+                      >
+                        <option value="">{designedLabel(button, s.id, p.id)}</option>
+                        <option value={TRANSPARENT}>transparent</option>
+                        {colorVars.map((name) => (
+                          <option key={name} value={name}>
+                            {name}
+                          </option>
+                        ))}
+                      </select>
+                    </span>
+                  </label>
+                );
+              })}
+            </fieldset>
+          ))}
+        </section>
+      ))}
+    </aside>
+  );
+}
+
 const positionText = (position: Position | null) =>
   position ? positionLabel(position) : "As designed";
 
@@ -419,24 +721,31 @@ function Card({
           className="absolute inset-0 cursor-zoom-in focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-blue-500"
         />
       </div>
-      <div className="flex flex-wrap items-center gap-2 border-t border-zinc-200 p-3 dark:border-zinc-800">
-        <div className="mr-auto">
-          <p className="text-sm font-medium">
+      <div className="flex flex-col gap-2.5 border-t border-zinc-200 p-3 dark:border-zinc-800">
+        {/* The name and the copy buttons share a row; the copy buttons never split up. */}
+        <div className="flex items-center gap-2">
+          <p className="mr-auto min-w-0 truncate text-sm font-medium" title={snippet.name}>
             <span className="mr-2 font-normal tabular-nums text-zinc-400">
               {String(index).padStart(2, "0")}
             </span>
             {snippet.name}
           </p>
-          {position !== undefined && (
-            <p className="text-xs text-zinc-500">Position: {positionText(position)}</p>
-          )}
+          <div className="flex shrink-0 gap-2">
+            <CopyButton text={snippet.html} label="Copy HTML" />
+            <CopyButton text={snippet.css} label="Copy CSS" />
+          </div>
         </div>
-        <ButtonPicker buttons={buttons} onChange={onButtons} />
-        {position !== undefined && (
-          <PositionPicker value={position} onChange={onPosition} fullWidth={snippet.fullWidth} />
+        {(buttons.choices.length > 0 || position !== undefined) && (
+          <div className="flex flex-wrap items-center gap-x-5 gap-y-2">
+            <ButtonPicker buttons={buttons} onChange={onButtons} />
+            {position !== undefined && (
+              <div className="flex items-center gap-2">
+                <PositionPicker value={position} onChange={onPosition} fullWidth={snippet.fullWidth} />
+                <span className="text-xs text-zinc-500">Position: {positionText(position)}</span>
+              </div>
+            )}
+          </div>
         )}
-        <CopyButton text={snippet.html} label="Copy HTML" />
-        <CopyButton text={snippet.css} label="Copy CSS" />
       </div>
     </li>
   );
@@ -520,6 +829,12 @@ function Detail({
   onPosition,
   buttons,
   onButtons,
+  colors,
+  designed,
+  onColors,
+  font,
+  onFont,
+  colorVars,
   theme,
   onClose,
 }: {
@@ -529,6 +844,12 @@ function Detail({
   onPosition: (position: Position | null) => void;
   buttons: Buttons;
   onButtons: (count: ButtonCount | null) => void;
+  colors: ButtonColorSet;
+  designed: DesignedStyles[];
+  onColors: (colors: ButtonColorSet) => void;
+  font: ButtonText | null;
+  onFont: (font: ButtonText | null) => void;
+  colorVars: string[];
   theme: PreviewTheme;
   onClose: () => void;
 }) {
@@ -540,7 +861,7 @@ function Detail({
   );
 
   return (
-    <Modal onClose={onClose} label={snippet.name} className="max-w-6xl">
+    <Modal onClose={onClose} label={snippet.name} className="max-w-7xl">
       <div className="flex flex-wrap items-center gap-2 border-b border-zinc-200 px-4 py-3 dark:border-zinc-800">
         <h2 className="mr-auto font-medium">{snippet.name}</h2>
         {position !== undefined && (
@@ -571,22 +892,35 @@ function Detail({
         </button>
       </div>
 
-      <div className="min-h-0 flex-1 overflow-y-auto">
-        <div ref={stageRef} className="bg-zinc-100 dark:bg-zinc-900">
-          {stageWidth > 0 && (
-            <PreviewFrame
-              doc={doc}
-              viewport={VIEWPORTS[device]}
-              width={stageWidth}
-              title={`${snippet.name} preview`}
-              interactive
-            />
-          )}
+      {/* Preview and code scroll on the left; the button colors stay in view on the right. */}
+      <div className="flex min-h-0 flex-1 flex-col overflow-y-auto lg:flex-row lg:overflow-hidden">
+        <div className="min-w-0 flex-1 lg:overflow-y-auto">
+          <div ref={stageRef} className="bg-zinc-100 dark:bg-zinc-900">
+            {stageWidth > 0 && (
+              <PreviewFrame
+                doc={doc}
+                viewport={VIEWPORTS[device]}
+                width={stageWidth}
+                title={`${snippet.name} preview`}
+                interactive
+              />
+            )}
+          </div>
+          <div className="grid grid-cols-1 gap-4 p-4 xl:grid-cols-2">
+            <CodeBlock label="HTML" code={snippet.html} />
+            <CodeBlock label="CSS" code={snippet.css} />
+          </div>
         </div>
-        <div className="grid grid-cols-1 gap-4 p-4 lg:grid-cols-2">
-          <CodeBlock label="HTML" code={snippet.html} />
-          <CodeBlock label="CSS" code={snippet.css} />
-        </div>
+        <ButtonStylePanel
+          count={buttons.value ?? buttons.built}
+          colors={colors}
+          designed={designed}
+          onChange={onColors}
+          font={font}
+          onFont={onFont}
+          colorVars={colorVars}
+          theme={theme}
+        />
       </div>
     </Modal>
   );

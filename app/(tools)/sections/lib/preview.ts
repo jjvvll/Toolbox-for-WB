@@ -41,6 +41,10 @@ export function readTheme(rawSavedPalette: string | null): PreviewTheme {
   };
 }
 
+/** The theme's own button colors, which every section button starts from. */
+export const THEME_BUTTON_CSS = `.button-style-2{color:var(--accent-button)!important;background-color:var(--primary-light)!important;border-color:var(--primary-light)!important}
+.button-style-2:hover{color:var(--primary-light)!important;background-color:transparent!important;border-color:var(--primary-light)!important}`;
+
 // The parts of the site theme that decide how a pasted section looks, taken
 // from the live theme stylesheet: resets, heading and body type, the base
 // button, and the theme's own button colors that sections have to override.
@@ -59,8 +63,7 @@ img{border:0;vertical-align:middle;max-width:100%}
 .lp-btn:after{border-right:0 solid;border-top:0 solid;content:"";display:inline-block;height:0;line-height:1;margin-left:0;position:relative;top:-1px;transform:rotate(45deg);transition:width .3s,height .3s,margin .3s,border .2s;vertical-align:middle;width:0}
 .lp-btn:hover:after{border-right-width:2px;border-top-width:2px;height:9px;margin-left:2px;width:9px}
 }
-.button-style-2{color:var(--accent-button)!important;background-color:var(--primary-light)!important;border-color:var(--primary-light)!important}
-.button-style-2:hover{color:var(--primary-light)!important;background-color:transparent!important;border-color:var(--primary-light)!important}
+${THEME_BUTTON_CSS}
 .container,.lp-container{margin-left:auto;margin-right:auto;padding-left:20px;padding-right:20px;width:100%}
 @media(min-width:992px){.container,.lp-container{padding-left:30px;padding-right:30px}}
 @media(min-width:1150px){.container,.lp-container{max-width:1130px}}
