@@ -30,6 +30,7 @@ import { KINDS, STYLES } from "./lib/catalog";
 import { COLUMNS, ROWS, positionLabel, withPosition, type Position } from "./lib/position";
 import { buildPreviewDoc, readTheme, type PreviewTheme, type SectionKind } from "./lib/preview";
 import { fillFor, type Audience, type Length, type Snippet } from "./lib/shared";
+import { hasSpacing, withSpacing } from "./lib/spacing";
 
 /** Widths the previews are laid out at. Cards always show the desktop layout, scaled down. */
 const VIEWPORTS = { desktop: 1280, tablet: 820, mobile: 390 } as const;
@@ -49,7 +50,12 @@ type Item = {
   font: ButtonText | null;
   /** What each button's colors and text are before any are changed. */
   designed: DesignedStyles[];
+  /** Profiles and content sections only: their spacing and site-fix choices. */
+  spacing?: Spacing;
 };
+
+/** Whether a design keeps its space above and below, and brings the site fixes. */
+type Spacing = { keepSpace: boolean; siteFixes: boolean };
 
 const AUDIENCES: { id: Audience; label: string; detail: string }[] = [
   { id: "agent", label: "Individual", detail: "Agent Name, with a Learn More button to /about" },
@@ -129,6 +135,9 @@ export default function SectionsTool() {
   const [buttonColors, setButtonColors] = useState<Record<string, ButtonColorSet>>({});
   // Each design's button text, by design. Unset means as designed.
   const [buttonFonts, setButtonFonts] = useState<Record<string, ButtonText | null>>({});
+  // Profiles and content sections: off and on by default respectively, by design.
+  const [keepSpace, setKeepSpace] = useState<Record<string, boolean>>({});
+  const [siteFixes, setSiteFixes] = useState<Record<string, boolean>>({});
 
   const savedPalette = useSyncExternalStore(subscribeStorage, readSavedPalette, () => null);
   const theme = useMemo(() => readTheme(savedPalette), [savedPalette]);
@@ -153,12 +162,16 @@ export default function SectionsTool() {
           const styled = withButtonStyles(sized, kind, colors, font);
           const filled = { ...styled, html: fillFor(styled.html, audience) };
           const item = { key, snippet: filled, buttons, colors, font, designed };
-          // Only headings sit over a photo; the rest are full-width sections of their own.
-          if (kind !== "opening") return item;
+          // Profiles and content sections are full-width sections of their own, with spacing
+          // choices; headings sit over a photo and can be positioned.
+          if (hasSpacing(kind)) {
+            const spacing = { keepSpace: keepSpace[key] ?? false, siteFixes: siteFixes[key] ?? true };
+            return { ...item, snippet: withSpacing(filled, kind, spacing), spacing };
+          }
           const position = positions[key] ?? null;
           return { ...item, snippet: withPosition(filled, position), position };
         }),
-    [style, kind, audience, byLength, length, positions, buttonCounts, buttonColors, buttonFonts],
+    [style, kind, audience, byLength, length, positions, buttonCounts, buttonColors, buttonFonts, keepSpace, siteFixes],
   );
   const setColors = (key: string, colors: ButtonColorSet) =>
     setButtonColors((all) => ({ ...all, [key]: colors }));
@@ -169,6 +182,10 @@ export default function SectionsTool() {
     setPositions((all) => ({ ...all, [key]: position }));
   const setButtons = (key: string, count: ButtonCount | null) =>
     setButtonCounts((all) => ({ ...all, [key]: count }));
+  const setSpacing = (key: string, spacing: Spacing) => {
+    setKeepSpace((all) => ({ ...all, [key]: spacing.keepSpace }));
+    setSiteFixes((all) => ({ ...all, [key]: spacing.siteFixes }));
+  };
   const open = items.find((item) => item.key === openKey) ?? null;
 
   return (
@@ -276,6 +293,13 @@ export default function SectionsTool() {
           and on hover, from the palette&apos;s :root variables or transparent. The choices are written
           into its CSS as you make them.
         </p>
+        {kind !== "opening" && (
+          <p>
+            Each design starts with no padding or margin above and below it; turn on Top &amp;
+            bottom space to keep the design&apos;s own. Site fixes (paragraphs that wrap, and no
+            margin under the boxed text) are added to the CSS by default and can be turned off.
+          </p>
+        )}
         {kind === "opening" && (
           <p>
             Use the grid on a design to choose where it sits over the photo, such as bottom left or
@@ -306,6 +330,8 @@ export default function SectionsTool() {
             onPosition={(position) => setPosition(item.key, position)}
             buttons={item.buttons}
             onButtons={(count) => setButtons(item.key, count)}
+            spacing={item.spacing}
+            onSpacing={(spacing) => setSpacing(item.key, spacing)}
             theme={theme}
             onOpen={() => setOpenKey(item.key)}
           />
@@ -320,6 +346,8 @@ export default function SectionsTool() {
           onPosition={(position) => setPosition(open.key, position)}
           buttons={open.buttons}
           onButtons={(count) => setButtons(open.key, count)}
+          spacing={open.spacing}
+          onSpacing={(spacing) => setSpacing(open.key, spacing)}
           colors={open.colors}
           designed={open.designed}
           onColors={(colors) => setColors(open.key, colors)}
@@ -663,6 +691,46 @@ function ButtonStylePanel({
   );
 }
 
+/** On/off switches for a profile or content section's spacing and site fixes. */
+function SpacingToggles({ spacing, onChange }: { spacing: Spacing; onChange: (spacing: Spacing) => void }) {
+  const toggles: { id: keyof Spacing; label: string; title: string }[] = [
+    {
+      id: "keepSpace",
+      label: "Top & bottom space",
+      title: "Keep the design's own padding and margin above and below it",
+    },
+    {
+      id: "siteFixes",
+      label: "Site fixes",
+      title: "Add .redesign p { white-space: normal } and no margin under .boxed-text__description",
+    },
+  ];
+  return (
+    <div className="flex shrink-0 items-center gap-1.5">
+      {toggles.map((t) => (
+        <button
+          key={t.id}
+          type="button"
+          aria-pressed={spacing[t.id]}
+          title={t.title}
+          onClick={() => onChange({ ...spacing, [t.id]: !spacing[t.id] })}
+          className={`flex items-center gap-1.5 rounded-md border px-2 py-0.5 text-xs font-medium transition-colors ${
+            spacing[t.id]
+              ? "border-blue-600 bg-blue-50 text-blue-700 dark:border-blue-500 dark:bg-blue-950/40 dark:text-blue-300"
+              : "border-zinc-300 text-zinc-500 hover:border-zinc-400 dark:border-zinc-700 dark:hover:border-zinc-500"
+          }`}
+        >
+          <span
+            aria-hidden
+            className={`size-1.5 rounded-full ${spacing[t.id] ? "bg-blue-600 dark:bg-blue-400" : "bg-zinc-400 dark:bg-zinc-500"}`}
+          />
+          {t.label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
 const positionText = (position: Position | null) =>
   position ? positionLabel(position) : "As designed";
 
@@ -674,6 +742,8 @@ function Card({
   onPosition,
   buttons,
   onButtons,
+  spacing,
+  onSpacing,
   theme,
   onOpen,
 }: {
@@ -684,6 +754,8 @@ function Card({
   onPosition: (position: Position | null) => void;
   buttons: Buttons;
   onButtons: (count: ButtonCount | null) => void;
+  spacing?: Spacing;
+  onSpacing: (spacing: Spacing) => void;
   theme: PreviewTheme;
   onOpen: () => void;
 }) {
@@ -735,9 +807,10 @@ function Card({
             <CopyButton text={snippet.css} label="Copy CSS" />
           </div>
         </div>
-        {(buttons.choices.length > 0 || position !== undefined) && (
+        {(buttons.choices.length > 0 || position !== undefined || spacing) && (
           <div className="flex flex-wrap items-center gap-x-5 gap-y-2">
             <ButtonPicker buttons={buttons} onChange={onButtons} />
+            {spacing && <SpacingToggles spacing={spacing} onChange={onSpacing} />}
             {position !== undefined && (
               <div className="flex items-center gap-2">
                 <PositionPicker value={position} onChange={onPosition} fullWidth={snippet.fullWidth} />
@@ -829,6 +902,8 @@ function Detail({
   onPosition,
   buttons,
   onButtons,
+  spacing,
+  onSpacing,
   colors,
   designed,
   onColors,
@@ -844,6 +919,8 @@ function Detail({
   onPosition: (position: Position | null) => void;
   buttons: Buttons;
   onButtons: (count: ButtonCount | null) => void;
+  spacing?: Spacing;
+  onSpacing: (spacing: Spacing) => void;
   colors: ButtonColorSet;
   designed: DesignedStyles[];
   onColors: (colors: ButtonColorSet) => void;
@@ -871,6 +948,7 @@ function Detail({
           </div>
         )}
         <ButtonPicker buttons={buttons} onChange={onButtons} />
+        {spacing && <SpacingToggles spacing={spacing} onChange={onSpacing} />}
         {(Object.keys(VIEWPORTS) as Device[]).map((d) => (
           <button
             key={d}
