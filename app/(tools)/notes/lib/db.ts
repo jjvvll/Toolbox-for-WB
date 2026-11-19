@@ -132,6 +132,18 @@ for (const table of [db.notes, db.folders, db.templates]) {
   t.hook("updating", (mods) => ("updatedAt" in mods ? undefined : { updatedAt: Date.now() }));
 }
 
+/**
+ * Deletes a note after asking twice ("Are you sure?", then "Are you really sure?").
+ * Returns whether it was deleted. It's deleted here and in the database.
+ */
+export async function deleteNoteWithConfirm(note: Pick<Note, "id" | "title">): Promise<boolean> {
+  const name = note.title.trim() || "Untitled";
+  if (!window.confirm(`Are you sure you want to delete “${name}”?`)) return false;
+  if (!window.confirm(`Are you really sure? “${name}” will be deleted here and from the database, and it can't be undone.`)) return false;
+  await deleteRecords("notes", [note.id]);
+  return true;
+}
+
 /** Deletes records here and remembers to delete them in the database too. */
 export async function deleteRecords(table: SyncedTable, ids: string[]) {
   const at = Date.now();

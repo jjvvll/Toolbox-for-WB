@@ -9,7 +9,7 @@ import { EditorRegistry, EditorRegistryContext } from "./editor-registry";
 import HighlightChecklist from "./highlight-checklist";
 import NoteForm from "./note-form";
 import { NoteSyncBadge } from "./sync-status";
-import { db, deleteRecords } from "./lib/db";
+import { db, deleteNoteWithConfirm } from "./lib/db";
 import { closeNoteWindow, setMinimized, setWide, useNoteWindow } from "./lib/note-window";
 import { displayTitle } from "./lib/search";
 
@@ -50,9 +50,7 @@ export default function NoteWindow() {
   if (!win.id || !here || !note || !folders || typeof document === "undefined") return null;
 
   async function remove() {
-    if (!note || !window.confirm(`Delete “${displayTitle(note)}”? This can't be undone.`)) return;
-    closeNoteWindow();
-    await deleteRecords("notes", [note.id]);
+    if (note && (await deleteNoteWithConfirm(note))) closeNoteWindow();
   }
 
   // Rendered into <body> so `fixed` is relative to the screen, not a frosted panel.

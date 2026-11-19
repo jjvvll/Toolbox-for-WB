@@ -8,8 +8,8 @@ import { CardSyncMark, SyncBanner } from "./sync-status";
 import TemplatesDialog from "./templates-dialog";
 import { exportBackup, importBackup, parseBackup } from "./lib/backup";
 import { htmlToPlainText, noteFullHtml } from "./lib/convert";
-import { LINK_FIELDS, NOTE_SECTIONS, createNote, sectionsOf, db, deleteFolder, newId, type Folder, type Note } from "./lib/db";
-import { openNote, useNoteWindow } from "./lib/note-window";
+import { LINK_FIELDS, NOTE_SECTIONS, createNote, deleteNoteWithConfirm, sectionsOf, db, deleteFolder, newId, type Folder, type Note } from "./lib/db";
+import { closeNoteWindow, openNote, useNoteWindow } from "./lib/note-window";
 import { displayTitle, noteMatcher, relativeTime } from "./lib/search";
 
 type Filter = { kind: "all" } | { kind: "unfiled" } | { kind: "folder"; id: string } | { kind: "tag"; tag: string };
@@ -329,6 +329,19 @@ function NoteCard({ note, folder, isOpen }: { note: Note; folder?: Folder; isOpe
       <div className="flex items-start gap-2">
         <h3 className="line-clamp-2 flex-1 font-semibold leading-snug">{displayTitle(note)}</h3>
         <CopyMenu compact getNote={() => ({ title: note.title, content: noteFullHtml(note) })} />
+        <button
+          type="button"
+          onClick={async (e) => {
+            e.stopPropagation(); // don't open the note
+            if ((await deleteNoteWithConfirm(note)) && isOpen) closeNoteWindow();
+          }}
+          onKeyDown={(e) => e.stopPropagation()}
+          title="Delete note"
+          aria-label={`Delete ${displayTitle(note)}`}
+          className="rounded-md border border-zinc-300 px-2 py-1 text-xs text-zinc-500 hover:border-red-300 hover:bg-red-50 hover:text-red-600 dark:border-zinc-700 dark:hover:bg-red-950/30"
+        >
+          🗑
+        </button>
       </div>
       {links.length > 0 && (
         <div className="flex flex-wrap gap-1.5">
