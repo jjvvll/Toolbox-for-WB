@@ -111,7 +111,7 @@ function iou(a: Face, b: Face) {
 
 function dedupe(faces: Face[]): Face[] {
   const kept: Face[] = [];
-  for (const f of [...faces].sort((a, b) => b.score - a.score)) {
+  for (const f of faces.toSorted((a, b) => b.score - a.score)) {
     if (kept.every((k) => iou(k, f) < 0.3)) kept.push(f);
   }
   return kept;

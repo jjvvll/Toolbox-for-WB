@@ -3,6 +3,8 @@
 :root {
   --background: #ffffff;
   --foreground: #171717;
+  /* Scrollbars, selects, checkboxes and other built-in controls follow light/dark mode too. */
+  color-scheme: light dark;
 }
 
 @theme inline {

@@ -1,4 +1,5 @@
 import Dexie, { type EntityTable } from "dexie";
+import { askConfirm } from "@/components/ask-dialog";
 
 /** The link fields at the top of a note. */
 export const LINK_FIELDS = [
@@ -48,6 +49,29 @@ export const DESIGN_FIELDS = [
   { key: "more", label: "More details" },
 ] as const;
 
+/** The parts of the compliance page, each with a link and pasted guidelines. */
+export const COMPLIANCE_PARTS = [
+  { key: "state", label: "State compliance" },
+  { key: "mls", label: "MLS compliance" },
+  { key: "brokerage", label: "Brokerage compliance" },
+] as const;
+export type ComplianceKey = (typeof COMPLIANCE_PARTS)[number]["key"];
+export type CompliancePart = {
+  /** A link to the guidelines (or a short description). */
+  link: string;
+  /** Tiptap HTML. */
+  notes: string;
+};
+export type Compliance = Partial<Record<ComplianceKey, CompliancePart>>;
+export const EMPTY_COMPLIANCE_PART: CompliancePart = { link: "", notes: "" };
+
+/** A note's compliance parts. Text from the first version (one text area) goes under State compliance. */
+export function complianceOf(note: Pick<Note, "compliance">): Compliance {
+  const c = note.compliance;
+  if (typeof c === "string") return c ? { state: { link: "", notes: c } } : {};
+  return c ?? {};
+}
+
 export type Note = {
   id: string;
   title: string;
@@ -64,6 +88,11 @@ export type Note = {
   sectionLinks?: Partial<Record<SectionKey, string>>;
   /** The Design section's extra fields. */
   design?: DesignDetails;
+  /**
+   * Page 2 of the note window: pasted compliance guidelines, in three parts. A plain string
+   * is the first version (one big text area); `complianceOf` reads either.
+   */
+  compliance?: Compliance | string;
   /**
    * The first version of the layout kept notes, reference and reason per section. Read
    * once by `sectionsOf`, which moves them into `sections`; not written any more.
@@ -138,8 +167,8 @@ for (const table of [db.notes, db.folders, db.templates]) {
  */
 export async function deleteNoteWithConfirm(note: Pick<Note, "id" | "title">): Promise<boolean> {
   const name = note.title.trim() || "Untitled";
-  if (!window.confirm(`Are you sure you want to delete “${name}”?`)) return false;
-  if (!window.confirm(`Are you really sure? “${name}” will be deleted here and from the database, and it can't be undone.`)) return false;
+  if (!(await askConfirm({ title: `Delete “${name}”?`, message: "Are you sure you want to delete this note?", confirmLabel: "Delete", danger: true }))) return false;
+  if (!(await askConfirm({ title: "Are you really sure?", message: `“${name}” will be deleted here and from the database, and it can't be undone.`, confirmLabel: "Delete for good", danger: true }))) return false;
   await deleteRecords("notes", [note.id]);
   return true;
 }

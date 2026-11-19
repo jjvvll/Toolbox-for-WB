@@ -1,8 +1,10 @@
 "use client";
 
+import { askConfirm, askText } from "@/components/ask-dialog";
 import { useLiveQuery } from "dexie-react-hooks";
 import { useEffect, useMemo, useRef, useState } from "react";
 import CopyMenu from "./copy-menu";
+import RfqaButton from "./rfqa-button";
 import QuickSearch from "./quick-search";
 import { CardSyncMark, SyncBanner } from "./sync-status";
 import TemplatesDialog from "./templates-dialog";
@@ -94,7 +96,7 @@ export default function NotesApp() {
   }
 
   async function addFolder() {
-    const name = window.prompt("Folder name")?.trim();
+    const name = (await askText({ title: "New folder", placeholder: "Folder name", confirmLabel: "Create" }))?.trim();
     if (!name) return;
     const id = newId();
     await db.folders.add({ id, name, createdAt: Date.now() });
@@ -102,14 +104,14 @@ export default function NotesApp() {
   }
 
   async function renameFolder(folder: Folder) {
-    const name = window.prompt("Rename folder", folder.name)?.trim();
+    const name = (await askText({ title: "Rename folder", defaultValue: folder.name, confirmLabel: "Rename" }))?.trim();
     if (name && name !== folder.name) await db.folders.update(folder.id, { name });
   }
 
   async function removeFolder(folder: Folder) {
     const count = notes?.filter((n) => n.folderId === folder.id).length ?? 0;
-    const detail = count ? ` Its ${count} note${count === 1 ? "" : "s"} will move to “No folder”.` : "";
-    if (!window.confirm(`Delete the folder “${folder.name}”?${detail}`)) return;
+    const detail = count ? `Its ${count} note${count === 1 ? "" : "s"} will move to “No folder”.` : undefined;
+    if (!(await askConfirm({ title: `Delete the folder “${folder.name}”?`, message: detail, confirmLabel: "Delete", danger: true }))) return;
     await deleteFolder(folder.id);
     if (filter.kind === "folder" && filter.id === folder.id) setFilter({ kind: "all" });
   }
@@ -118,10 +120,11 @@ export default function NotesApp() {
     try {
       const parsed = parseBackup(await file.text());
       const { notes: n, folders: f, templates: t } = parsed;
-      const ok = window.confirm(
-        `Import ${n.length} notes, ${f.length} folders, and ${t.length} templates?\n\n` +
-          "They are merged with your current data. Items with the same ID are replaced by the imported version.",
-      );
+      const ok = await askConfirm({
+        title: `Import ${n.length} notes, ${f.length} folders, and ${t.length} templates?`,
+        message: "They are merged with your current data. Items with the same ID are replaced by the imported version.",
+        confirmLabel: "Import",
+      });
       if (!ok) return;
       await importBackup(parsed);
       setStatus({ kind: "ok", text: `Imported ${n.length} notes, ${f.length} folders, ${t.length} templates.` });
@@ -328,6 +331,7 @@ function NoteCard({ note, folder, isOpen }: { note: Note; folder?: Folder; isOpe
     >
       <div className="flex items-start gap-2">
         <h3 className="line-clamp-2 flex-1 font-semibold leading-snug">{displayTitle(note)}</h3>
+        <RfqaButton compact getNote={() => note} />
         <CopyMenu compact getNote={() => ({ title: note.title, content: noteFullHtml(note) })} />
         <button
           type="button"

@@ -206,7 +206,7 @@ type ColorItem = { p: ColorPart; note?: string };
 
 function ColorValue({ p, isMatch }: { p: ColorPart; isMatch: (c: Rgba) => boolean }) {
   // Highlight the matching tokens, with a swatch for each color in the value.
-  const tokens = [...p.c].sort((a, b) => b.t.length - a.t.length);
+  const tokens = p.c.toSorted((a, b) => b.t.length - a.t.length);
   const re = new RegExp(tokens.map((k) => k.t.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|"), "gi");
   const out: React.ReactNode[] = [];
   let last = 0;
@@ -456,8 +456,8 @@ function CaseLine({ x }: { x: CaseItem }) {
   let body: React.ReactNode = x.u.t;
   if (typed) {
     const re = new RegExp(
-      [...typed.runs]
-        .sort((a, b) => b.length - a.length)
+      typed.runs
+        .toSorted((a, b) => b.length - a.length)
         .map((run) => run.split(" ").map((w) => w.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("[\\s\\S]{1,3}?"))
         .join("|"),
       "g",

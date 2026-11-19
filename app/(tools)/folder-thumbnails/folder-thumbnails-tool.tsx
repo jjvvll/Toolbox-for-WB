@@ -1,5 +1,6 @@
 "use client";
 
+import { askConfirm } from "@/components/ask-dialog";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { CoverFormat } from "@/lib/render-pdf-cover";
 import {
@@ -287,10 +288,11 @@ export default function FolderThumbnailsTool() {
 
   async function saveIntoFolder() {
     if (!root?.requestPermission) return;
-    const ok = window.confirm(
-      `Write ${done.length} thumbnail${done.length === 1 ? "" : "s"} into “${root.name}”, next to each source file?\n\n` +
-        `Each is named like its source file (<file>${addSuffix ? "-cover" : ""}.${ext}). Existing files with those names are replaced.`,
-    );
+    const ok = await askConfirm({
+      title: `Write ${done.length} thumbnail${done.length === 1 ? "" : "s"} into “${root.name}”?`,
+      message: `Each goes next to its source file and is named like it (<file>${addSuffix ? "-cover" : ""}.${ext}). Existing files with those names are replaced.`,
+      confirmLabel: "Write files",
+    });
     if (!ok) return;
     if ((await root.requestPermission({ mode: "readwrite" })) !== "granted") {
       setMessage({ kind: "error", text: "Write permission was not granted, so nothing was saved." });

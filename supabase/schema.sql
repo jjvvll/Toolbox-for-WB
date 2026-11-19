@@ -55,3 +55,19 @@ alter table public.notes enable row level security;
 alter table public.folders enable row level security;
 alter table public.templates enable row level security;
 alter table public.error_log enable row level security;
+
+-- Added 2026-11-20: the note's compliance page (State, MLS and Brokerage compliance, each a
+-- link and the pasted guidelines). The app keeps it inside `data` like the rest of the note;
+-- this column is a copy, so it's easy to browse in the Table Editor.
+-- Shape: {"state": {"link": "...", "notes": "<p>…</p>"}, "mls": {…}, "brokerage": {…}}
+alter table public.notes add column if not exists compliance jsonb;
+
+-- Fill it in for notes saved before the column existed.
+update public.notes
+set compliance = case
+  when jsonb_typeof(data->'compliance') = 'object' then data->'compliance'
+  -- The first version was one text area; the app shows that text under State compliance.
+  when jsonb_typeof(data->'compliance') = 'string' and data->>'compliance' <> ''
+    then jsonb_build_object('state', jsonb_build_object('link', '', 'notes', data->>'compliance'))
+end
+where compliance is null and data ? 'compliance';

@@ -50,10 +50,10 @@ function mergeVideos(prev: ChannelVideo[], next: ChannelVideo[]) {
 }
 
 function sortVideos(videos: ChannelVideo[], sort: Sort) {
-  if (sort === "title") return [...videos].sort((a, b) => a.title.localeCompare(b.title));
+  if (sort === "title") return videos.toSorted((a, b) => a.title.localeCompare(b.title));
   // Playlists are already newest first; dates only refine that order.
   const time = (v: ChannelVideo) => (v.publishedAt ? Date.parse(v.publishedAt) : 0);
-  const sorted = [...videos].sort((a, b) => time(b) - time(a));
+  const sorted = videos.toSorted((a, b) => time(b) - time(a));
   return sort === "oldest" ? sorted.reverse() : sorted;
 }
 

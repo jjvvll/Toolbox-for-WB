@@ -1,5 +1,6 @@
 "use client";
 
+import { askConfirm } from "@/components/ask-dialog";
 import { useEffect, useState } from "react";
 import { inputClass } from "@/components/ui";
 
@@ -122,8 +123,8 @@ export function NotePicker({ notes }: { notes: ReturnType<typeof useNotes> }) {
               type="button"
               disabled={!current}
               className="rounded-md border border-zinc-300 px-2 py-1 text-sm text-red-600 disabled:opacity-50 dark:border-zinc-700"
-              onClick={() => {
-                if (!current || !confirm(`Delete the note “${current.name || "Untitled note"}”?`)) return;
+              onClick={async () => {
+                if (!current || !(await askConfirm({ title: `Delete the note “${current.name || "Untitled note"}”?`, confirmLabel: "Delete", danger: true }))) return;
                 const rest = notes.notes.filter((n) => n.id !== current.id);
                 notes.update(rest, notes.active === current.id ? "" : notes.active);
                 setEditId(rest[0]?.id ?? "");

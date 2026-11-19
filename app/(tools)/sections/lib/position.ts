@@ -2,6 +2,7 @@
 // added to the end of a design's CSS; its HTML stays the same.
 
 import { formatCss, type Snippet } from "./shared";
+import { familyOf, type SiteTemplate } from "./template";
 
 export const ROWS = ["top", "middle", "bottom"] as const;
 export const COLUMNS = ["left", "center", "right"] as const;
@@ -12,8 +13,8 @@ export function positionLabel({ x, y }: Position): string {
   return `${y[0].toUpperCase()}${y.slice(1)} ${x}`;
 }
 
-// The opening section centers its description in a flex column, so the vertical
-// position is that column's alignment.
+// Both templates hold the description in a flex column, so the vertical position is
+// that column's alignment.
 const VERTICAL = { top: "flex-start", middle: "center", bottom: "flex-end" };
 const HORIZONTAL = {
   left: "margin-left: 0; margin-right: auto",
@@ -22,18 +23,34 @@ const HORIZONTAL = {
 };
 
 /**
- * The rules that move a heading to the given position. Sideways, the design
- * shrinks to fit its content and moves as one block, keeping its own alignment
- * inside; that only applies on desktop, since every design centers itself on
- * tablets and phones. Designs that span the full screen only move up and down.
+ * The rules that move a heading to the given position in the template. Sideways, the
+ * design shrinks to fit its content and moves as one block, keeping its own alignment
+ * inside; that only applies on desktop, since every design centers itself on tablets
+ * and phones. Designs that span the full screen only move up and down.
+ *
+ * Producer / Masterpiece: `.opening-with-search` is a full-height flex column whose
+ * `.center-block` takes the space between the header and the bottom spacer, so the
+ * description moves inside it. The title group is stretched to the container's width
+ * so left and right line up with the site's content edge.
+ *
+ * Visionary: the text sits in `.opening-search__content`, which is made a flex column
+ * so the slider (and the description in it) can move up and down.
  */
-export function positionCss(snippet: Snippet, position: Position): string {
-  const rules = [
-    `/* Position: ${positionLabel(position).toLowerCase()} */`,
-    `.opening-with-search .center-block { justify-content: ${VERTICAL[position.y]} !important }`,
-  ];
+export function positionCss(snippet: Snippet, position: Position, template: SiteTemplate): string {
+  const rules = [`/* Position: ${positionLabel(position).toLowerCase()} */`];
+  if (familyOf(template) === "producer") {
+    rules.push(`.opening-with-search .center-block { justify-content: ${VERTICAL[position.y]} !important }`);
+  } else {
+    rules.push(
+      `.opening-search__content { display: flex !important; flex-direction: column; justify-content: ${VERTICAL[position.y]} !important }`,
+    );
+  }
   if (!snippet.fullWidth) {
-    rules.push(`@media (min-width: 993px) { .hero-copy { width: fit-content; ${HORIZONTAL[position.x]} } }`);
+    const stretch =
+      familyOf(template) === "producer"
+        ? ".opening-with-search .lp-title-group { width: 100%; max-width: 100% !important }"
+        : ".opening-search__text-slider { width: 100% }";
+    rules.push(`@media (min-width: 993px) { ${stretch} .hero-copy { width: fit-content; ${HORIZONTAL[position.x]} } }`);
   }
   return formatCss(rules.join("\n"));
 }
@@ -70,6 +87,6 @@ export function scopeHeading(snippet: Snippet): Snippet {
 }
 
 /** The design with the position's rules added to its CSS. */
-export function withPosition(snippet: Snippet, position: Position | null): Snippet {
-  return position ? { ...snippet, css: `${snippet.css}\n${positionCss(snippet, position)}` } : snippet;
+export function withPosition(snippet: Snippet, position: Position | null, template: SiteTemplate): Snippet {
+  return position ? { ...snippet, css: `${snippet.css}\n${positionCss(snippet, position, template)}` } : snippet;
 }

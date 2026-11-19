@@ -1,5 +1,6 @@
 "use client";
 
+import { askText } from "@/components/ask-dialog";
 import { EditorContent, useEditor, useEditorState, type Editor } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import Highlight from "@tiptap/extension-highlight";
@@ -124,9 +125,9 @@ function Toolbar({ editor, compact }: { editor: Editor; compact: boolean }) {
 
   const chain = () => editor.chain().focus();
 
-  function editLink() {
+  async function editLink() {
     const current = editor.getAttributes("link").href as string | undefined;
-    const url = window.prompt("Link URL (leave empty to remove)", current ?? "https://");
+    const url = await askText({ title: current ? "Edit link" : "Add link", label: "Leave it empty to remove the link.", defaultValue: current ?? "https://", confirmLabel: "Save" });
     if (url === null) return;
     if (!url.trim() || url.trim() === "https://") {
       chain().extendMarkRange("link").unsetLink().run();

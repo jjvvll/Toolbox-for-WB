@@ -1,5 +1,6 @@
 "use client";
 
+import { askConfirm } from "@/components/ask-dialog";
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore, type ChangeEvent, type FormEvent } from "react";
 import Link from "next/link";
 import Editor, { loader, type Monaco } from "@monaco-editor/react";
@@ -197,8 +198,8 @@ export default function CodeEditorTool() {
     }
   }
 
-  function remove(name: string) {
-    if (!window.confirm(`Delete ${name}? This can't be undone.`)) return;
+  async function remove(name: string) {
+    if (!(await askConfirm({ title: `Delete ${name}?`, message: "This can't be undone.", confirmLabel: "Delete", danger: true }))) return;
     const next = files.filter((f) => f.name !== name);
     commit(next);
     if (active === name) open(firstHtml(next) ?? next[0].name);
@@ -217,7 +218,7 @@ export default function CodeEditorTool() {
     const incoming = await Promise.all(usable.map(async (f) => ({ name: f.name, content: await f.text() })));
     const isSame = (a: CodeFile, b: CodeFile) => a.name.toLowerCase() === b.name.toLowerCase();
     const replaced = files.filter((f) => incoming.some((i) => isSame(f, i)));
-    if (replaced.length && !window.confirm(`Replace ${replaced.map((f) => f.name).join(", ")}?`)) return;
+    if (replaced.length && !(await askConfirm({ title: `Replace ${replaced.map((f) => f.name).join(", ")}?`, message: "The imported files replace the ones with the same name.", confirmLabel: "Replace", danger: true }))) return;
 
     // Before commit: setValue fires onChange, which saves from the old list, so commit must run last.
     for (const file of incoming) {

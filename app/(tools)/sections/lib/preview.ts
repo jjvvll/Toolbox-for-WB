@@ -4,6 +4,7 @@
 import { ROOT_DEFAULTS, rootEntries } from "../../color-palette/lib/color";
 import { DEFAULT_FONT, cssFamily, googleFontsUrl, pairFor, type FontChoice } from "../../color-palette/lib/fonts";
 import { parseSavedRoot } from "../../color-palette/lib/saved-root";
+import { familyOf, type SiteTemplate, type TemplateFamily } from "./template";
 
 /** Headings, profiles, and the two kinds of content section: text only, and text with images. */
 export type SectionKind = "opening" | "profile" | "text" | "media";
@@ -32,6 +33,8 @@ export function readTheme(rawSavedPalette: string | null): PreviewTheme {
       ...(saved?.vars ?? Object.fromEntries(rootEntries("visionary", ROOT_DEFAULTS, "uppercase"))),
       "--global-primary-font-family": cssFamily(pair.heading),
       "--global-secondary-font-family": cssFamily(pair.body),
+      // Masterpiece buttons use the short name of the body font.
+      "--global-secondary-font-family-short": cssFamily(pair.body),
       "--global-body-font-size": "16px",
       "--global-h2-font-size": "48px",
     },
@@ -72,15 +75,19 @@ ${THEME_BUTTON_CSS}
 .lp-pre-line{white-space:pre-line}
 `;
 
-// The opening section: a hero image under a dark overlay, with the description
-// centered in it. The photo is drawn with gradients so nothing has to download.
-const OPENING_CSS = `
-.video-section{position:relative;color:#fff;overflow:hidden}
+// The photo is drawn with gradients so nothing has to download.
+const PHOTO_CSS = `
 .hero-photo{position:absolute;inset:0;background:
   radial-gradient(90% 60% at 72% 30%,rgba(255,214,170,.55),transparent 62%),
   radial-gradient(70% 50% at 18% 80%,rgba(40,58,52,.55),transparent 70%),
   linear-gradient(180deg,#5f7d99 0%,#9fb0b8 38%,#b8a890 56%,#6a6a58 76%,#3a3d34 100%)}
 .overlay-component{position:absolute;inset:0;background-color:rgba(0,0,0,.4)}
+`;
+
+// Producer / Masterpiece's opening: a hero image under a dark overlay, with the
+// description centered in it.
+const OPENING_CSS = `
+.video-section{position:relative;color:#fff;overflow:hidden}
 .opening-with-search{position:relative;--top-padding:110px;--bottom-padding:30px;display:flex;width:100%;flex-direction:column;min-height:680px;padding-top:var(--top-padding);padding-bottom:var(--bottom-padding)}
 .opening-with-search p,.center-block p{margin-bottom:10px}
 .opening-with-search .center-block{flex:1 0 auto;display:flex;align-items:center;justify-content:center;flex-direction:column}
@@ -90,9 +97,25 @@ const OPENING_CSS = `
 .opening-with-search .lp-title-group{max-width:100%}
 `;
 
+// Visionary's opening search: the photo slider behind, and the text slider, the
+// search box and the socials in a column over it. A stand-in for the theme's rules,
+// so the description and the search box show where they do on the site.
+const VISIONARY_OPENING_CSS = `
+.opening-search{position:relative;color:#fff;overflow:hidden}
+.opening-search__container{position:relative;display:flex;min-height:680px}
+.opening-search__image-wrapper{position:absolute;inset:0}
+.opening-search__content{position:relative;z-index:1;flex:1;display:flex;flex-direction:column;justify-content:center;padding:110px 0 30px}
+.splide__list{list-style:none;margin:0;padding:0}
+.opening-search__description{max-width:1130px;margin:0 auto;padding:0 30px}
+.opening-search__description p{margin-bottom:10px}
+.opening-search__search-box{width:min(720px,90%);min-height:56px;margin:24px auto 0;background:var(--searchBoxColor);display:flex;align-items:center;justify-content:flex-end;padding:0 16px;font-size:12px;opacity:.9}
+.lp-socials{list-style:none;margin:0;padding:0}
+`;
+
 const PROFILE_CSS = `
 .solid-section{background-color:var(--primary-light-bg);color:#000}
 .boxed-text__description{text-align:center}
+.full-bleed-cta{background-color:var(--primary-light-bg);color:#000}
 `;
 
 // A profile or content section is pasted into a plain boxed-text section.
@@ -100,15 +123,38 @@ const boxedText = (html: string) =>
   `<section class="solid-section"><div class="boxed-text redesign"><div class="lp-container">` +
   `<div class="boxed-text__description">${html}</div></div></div></section>`;
 
-const HOSTS: Record<SectionKind, (html: string) => string> = {
-  opening: (html) =>
-    `<section class="video-section"><div class="hero-photo"></div><div class="overlay-component"></div>` +
-    `<div class="redesign opening-with-search"><div class="center-block"><div class="container lp-container">` +
-    `<div class="lp-title-group"><div class="opening-description feature lp-pre-line">${html}</div></div>` +
-    `</div></div><div class="bottom-spacer"></div></div></section>`,
-  profile: boxedText,
-  text: boxedText,
-  media: boxedText,
+// In Visionary, a profile or content section is pasted into a full-bleed CTA.
+const fullBleed = (html: string) =>
+  `<section class="full-bleed-cta redesign"><div class="lp-container">` +
+  `<div class="full-bleed-cta__description">${html}</div></div></section>`;
+
+// The openings follow each template's own markup, so position rules hit the same elements as on the site.
+const PRODUCER_OPENING = (html: string) =>
+  `<section class="video-section"><div class="hero-photo"></div><div class="overlay-component"></div>` +
+  `<div class="redesign opening-with-search height-class-Full" data-only-active="false" data-video-url="" data-show-neighborhood-names="false">` +
+  `<div class="center-block"><div class="container lp-container">` +
+  `<div class="lp-title-group"><div class="opening-description feature lp-pre-line ">${html}</div></div>` +
+  `<div class="buttons"></div></div></div><div class="bottom-spacer"></div></div></section>`;
+
+const VISIONARY_OPENING = (html: string) =>
+  `<div class="opening-search" style="--searchBoxColor: rgba(26, 26, 26, 1);"><div class="opening-search__container">` +
+  `<div class="opening-search__image-wrapper"><div class="hero-photo"></div><div class="overlay-component"></div></div>` +
+  `<div class="opening-search__content">` +
+  `<div class="opening-search__text-slider splide"><div class="splide__track"><ul class="splide__list">` +
+  `<li class="splide__slide opening-search__item is-active"><div class="opening-search__description">${html}</div></li>` +
+  `</ul></div></div>` +
+  `<div class="opening-search__search-box search-form">Search box</div>` +
+  `<ul class="lp-socials opening-search-socials"></ul>` +
+  `</div></div></div>`;
+
+const HOSTS: Record<TemplateFamily, Record<SectionKind, (html: string) => string>> = {
+  producer: { opening: PRODUCER_OPENING, profile: boxedText, text: boxedText, media: boxedText },
+  visionary: { opening: VISIONARY_OPENING, profile: fullBleed, text: fullBleed, media: fullBleed },
+};
+
+const OPENING_STYLES: Record<TemplateFamily, string> = {
+  producer: PHOTO_CSS + OPENING_CSS,
+  visionary: PHOTO_CSS + VISIONARY_OPENING_CSS,
 };
 
 const svgUrl = (svg: string) => `data:image/svg+xml,${encodeURIComponent(svg)}`;
@@ -148,7 +194,7 @@ function placeholderImage(width: number, height: number, label: string): string 
 const PLACEHOLDER_URL = /https:\/\/placehold\.co\/(\d+)x(\d+)[^"\s]*?\?text=([^"&\s]*)/g;
 
 /** A complete document for the preview iframe. */
-export function buildPreviewDoc(kind: SectionKind, html: string, css: string, theme: PreviewTheme): string {
+export function buildPreviewDoc(kind: SectionKind, html: string, css: string, theme: PreviewTheme, template: SiteTemplate): string {
   const root = Object.entries(theme.vars)
     .map(([name, value]) => `${name}:${value};`)
     .join("");
@@ -160,7 +206,7 @@ export function buildPreviewDoc(kind: SectionKind, html: string, css: string, th
     // The sandbox blocks new windows, so links in a preview go nowhere instead of replacing it.
     `<base target="_blank">` +
     `<link rel="stylesheet" href="${theme.fontsUrl.replace(/&/g, "&amp;")}">` +
-    `<style>:root{${root}}</style><style>${THEME_CSS}${kind === "opening" ? OPENING_CSS : PROFILE_CSS}</style>` +
-    `<style>${css}</style></head><body>${HOSTS[kind](body)}</body></html>`
+    `<style>:root{${root}}</style><style>${THEME_CSS}${kind === "opening" ? OPENING_STYLES[familyOf(template)] : PROFILE_CSS}</style>` +
+    `<style>${css}</style></head><body>${HOSTS[familyOf(template)][kind](body)}</body></html>`
   );
 }

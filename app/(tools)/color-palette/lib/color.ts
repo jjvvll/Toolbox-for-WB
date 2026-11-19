@@ -204,9 +204,9 @@ export function rootToCss(template: TemplateId, values: RootValues, textCase: Te
 export function autoRoot(palette: string[], mode: PoolMode = "neutrals", variant = 0): RootValues {
   const brand = palette.length ? palette : ["#2563eb"];
   const pool = [...new Set(colorPool(brand, mode).flatMap((g) => g.colors))];
-  const byLum = [...pool].sort((a, b) => luminance(a) - luminance(b));
+  const byLum = pool.toSorted((a, b) => luminance(a) - luminance(b));
   // Backgrounds: prefer the client's own colors, then tints/shades of them, and only then pure black/white.
-  const ownByLum = [...brand].sort((a, b) => luminance(a) - luminance(b));
+  const ownByLum = brand.toSorted((a, b) => luminance(a) - luminance(b));
   const derived = byLum.filter((c) => !NEUTRALS.includes(c) && !brand.includes(c));
   const pick = <T,>(list: T[]) => list[variant % list.length];
   const unique = (list: string[]) => [...new Set(list)];
@@ -215,13 +215,13 @@ export function autoRoot(palette: string[], mode: PoolMode = "neutrals", variant
     ...ownByLum.filter((c) => luminance(c) < 0.2), ...derived.filter((c) => luminance(c) < 0.2), byLum[0],
   ]));
   const lightest = pick(unique([
-    [...ownByLum].reverse().find((c) => luminance(c) > 0.8) ?? [...derived].reverse().find((c) => luminance(c) > 0.8) ?? byLum[byLum.length - 1],
-    ...[...ownByLum].reverse().filter((c) => luminance(c) > 0.6), ...[...derived].reverse().filter((c) => luminance(c) > 0.6), byLum[byLum.length - 1],
+    ownByLum.findLast((c) => luminance(c) > 0.8) ?? derived.findLast((c) => luminance(c) > 0.8) ?? byLum[byLum.length - 1],
+    ...ownByLum.toReversed().filter((c) => luminance(c) > 0.6), ...derived.toReversed().filter((c) => luminance(c) > 0.6), byLum[byLum.length - 1],
   ]));
   const light = pool.includes("#ffffff") ? "#ffffff" : lightest;
 
   // Button: the most colorful palette color that shows up on the light background.
-  const byChroma = [...brand].sort((a, b) => chroma(b) - chroma(a) || Math.abs(luminance(a) - 0.4) - Math.abs(luminance(b) - 0.4));
+  const byChroma = brand.toSorted((a, b) => chroma(b) - chroma(a) || Math.abs(luminance(a) - 0.4) - Math.abs(luminance(b) - 0.4));
   const onLight = byChroma.filter((c) => contrast(c, lightest) >= 1.5);
   const accent = pick(onLight.length ? onLight : byChroma);
   // Tag: the next most colorful color that isn't a background and shows up on the card; otherwise it matches the button.

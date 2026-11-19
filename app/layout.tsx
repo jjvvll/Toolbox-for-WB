@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import AnimeSceneLoader from "@/components/anime-scene-loader";
 import ErrorCapture from "@/components/error-capture";
@@ -18,6 +18,11 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   title: { default: "Toolbox", template: "%s · Toolbox" },
   description: "Small utilities for media, links, and formatting.",
+};
+
+// <meta name="color-scheme">: the browser knows the page supports dark mode before the CSS loads.
+export const viewport: Viewport = {
+  colorScheme: "light dark",
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {

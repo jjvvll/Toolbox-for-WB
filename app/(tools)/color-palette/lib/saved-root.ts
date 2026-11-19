@@ -5,6 +5,8 @@ import {
   TEMPLATES,
   autoRoot,
   rootEntries,
+  rootHex,
+  varsFor,
   type PoolMode,
   type RootValues,
   type TemplateId,
@@ -42,5 +44,18 @@ export function parseSavedRoot(raw: string | null): { templateLabel: string; var
     return { templateLabel: template.label, vars: Object.fromEntries(entries) };
   } catch {
     return null;
+  }
+}
+
+/** Every distinct color in the palette tool's current :root, in export order (uppercase hex). */
+export function savedRootColors(raw: string | null): string[] {
+  try {
+    const saved: SavedRootFields | null = JSON.parse(raw ?? "null");
+    if (!saved || typeof saved !== "object") return [];
+    const template = TEMPLATES.find((t) => t.id === saved.template) ?? TEMPLATES[0];
+    const values = savedRootValues(saved);
+    return [...new Set(varsFor(template.id).map((v) => rootHex(values, v.name, template.id).toUpperCase()))];
+  } catch {
+    return [];
   }
 }

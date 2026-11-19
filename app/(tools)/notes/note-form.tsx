@@ -2,6 +2,7 @@
 
 import { useRef, useState } from "react";
 import CopyMenu from "./copy-menu";
+import RfqaButton from "./rfqa-button";
 import RichEditor from "./rich-editor";
 import TagInput from "./tag-input";
 import { noteFullHtml, noteSearchText } from "./lib/convert";
@@ -34,7 +35,7 @@ const isUrl = (s: string) => /^(https?:\/\/|www\.)\S+$/i.test(s.trim());
 const href = (s: string) => (/^www\./i.test(s.trim()) ? `https://${s.trim()}` : s.trim());
 
 /** A labelled field for a link, with buttons to open and copy it. */
-function LinkRow({ label, title, value, onChange, placeholder = "Paste a link" }: { label: string; title: string; value: string; onChange: (v: string) => void; placeholder?: string }) {
+export function LinkRow({ label, title, value, onChange, placeholder = "Paste a link" }: { label: string; title: string; value: string; onChange: (v: string) => void; placeholder?: string }) {
   const [copied, setCopied] = useState(false);
   return (
     <label className="flex items-start gap-2">
@@ -99,7 +100,7 @@ function NotesRow({
   );
 }
 
-function Section({ title, children }: { title: string; children: React.ReactNode }) {
+export function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <section className="flex flex-col gap-2.5 border-t border-zinc-200 pt-4 dark:border-zinc-800">
       <h3 className="text-base font-semibold">{title}</h3>
@@ -196,6 +197,7 @@ export default function NoteForm({
             ))}
           </select>
           <span className="mr-auto text-xs text-zinc-400">Edited {relativeTime(note.updatedAt)}</span>
+          <RfqaButton getNote={() => latest.current} />
           <CopyMenu getNote={() => ({ title: latest.current.title, content: noteFullHtml(latest.current) })} />
           <button
             type="button"

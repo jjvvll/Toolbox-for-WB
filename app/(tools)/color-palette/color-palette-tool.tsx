@@ -1,5 +1,6 @@
 "use client";
 
+import { askConfirm } from "@/components/ask-dialog";
 import { Fragment, useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { createPortal } from "react-dom";
@@ -162,9 +163,12 @@ export default function ColorPaletteTool() {
   /** Palette edits re-run the automatic assignment until colors have been set by hand. */
   const commitPalette = (next: Swatch[]) => applyPalette(next, customized);
 
-  function changeMode(next: PoolMode) {
+  async function changeMode(next: PoolMode) {
     setMode(next);
-    if (!customized || window.confirm("Re-assign the variables for this option? (Cancel keeps your current choices.)")) {
+    if (
+      !customized ||
+      (await askConfirm({ title: "Re-assign the variables for this option?", message: "Or keep the choices you set by hand.", confirmLabel: "Re-assign", cancelLabel: "Keep mine" }))
+    ) {
       setValues(autoRoot(activeHex(palette), next));
       setCustomized(false);
     }
@@ -210,7 +214,10 @@ export default function ColorPaletteTool() {
     });
     fullCanvas.current = toCanvas(img, 4000).ctx;
     setError(null);
-    applyPalette(extract(img, count), customized && !window.confirm("Re-assign the variables from this screenshot? (Cancel keeps your current assignments.)"));
+    const keep =
+      customized &&
+      !(await askConfirm({ title: "Re-assign the variables from this screenshot?", message: "Or keep the assignments you set by hand.", confirmLabel: "Re-assign", cancelLabel: "Keep mine" }));
+    applyPalette(extract(img, count), keep);
   }, [applyPalette, count, customized]);
 
   // Paste a screenshot anywhere on the page.
@@ -384,7 +391,9 @@ export default function ColorPaletteTool() {
               {palette.length > 0 && <CopyButton text={hexes.join(", ")} label="Copy" className="py-1.5 text-sm" />}
               {palette.length > 0 && (
                 <button type="button" className={`${button} text-red-600`}
-                  onClick={() => { if (window.confirm("Remove all colors from the palette?")) commitPalette([]); }}>
+                  onClick={async () => {
+                    if (await askConfirm({ title: "Remove all colors from the palette?", confirmLabel: "Clear", danger: true })) commitPalette([]);
+                  }}>
                   Clear
                 </button>
               )}

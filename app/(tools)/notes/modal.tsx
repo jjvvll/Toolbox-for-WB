@@ -1,8 +1,14 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { createPortal } from "react-dom";
+import { dialogClass, lightDismiss } from "@/components/ask-dialog";
 
+/**
+ * A native modal <dialog>. The browser makes the page behind it inert, keeps Tab inside it,
+ * closes it on Esc (and the back gesture), and puts focus back on the button that opened it.
+ * Clicking outside closes it too. `onClose` runs however it closes; unmounting it closes it.
+ */
 export default function Modal({
   onClose,
   label,
@@ -14,36 +20,40 @@ export default function Modal({
   children: React.ReactNode;
   className?: string;
 }) {
+  const ref = useRef<HTMLDialogElement>(null);
+  const onCloseRef = useRef(onClose);
   useEffect(() => {
-    const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
-    document.addEventListener("keydown", onKey);
-    const overflow = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
+    onCloseRef.current = onClose;
+  });
+
+  useEffect(() => {
+    const dialog = ref.current;
+    if (!dialog) return;
+    dialog.showModal();
+    const handleClose = () => onCloseRef.current();
+    dialog.addEventListener("close", handleClose);
+    const stopDismiss = lightDismiss(dialog);
     return () => {
-      document.removeEventListener("keydown", onKey);
-      document.body.style.overflow = overflow;
+      // Removed first, so closing it on unmount doesn't call onClose a second time.
+      dialog.removeEventListener("close", handleClose);
+      stopDismiss();
+      if (dialog.open) dialog.close();
     };
-  }, [onClose]);
+  }, []);
 
   if (typeof document === "undefined") return null;
 
-  // Rendered into <body>: the tools sit inside a frosted panel, and a backdrop
-  // filter makes its element the box that `fixed` children are placed in, so a
-  // modal left in place would cover the whole panel instead of the screen.
+  // Portalled into <body>: a modal dialog sits in the top layer anyway, but one inside a hidden
+  // (display: none) part of the page wouldn't show.
   return createPortal(
-    <div
-      className="fixed inset-0 z-50 flex items-start justify-center bg-black/40 p-4 pt-[10vh] text-foreground backdrop-blur-[2px]"
-      onMouseDown={(e) => e.target === e.currentTarget && onClose()}
+    <dialog
+      ref={ref}
+      aria-label={label}
+      {...({ closedby: "any" } as object)}
+      className={`${dialogClass} mt-[10vh] max-h-[80vh] w-[calc(100%-2rem)] open:flex flex-col overflow-hidden ${className}`}
     >
-      <div
-        role="dialog"
-        aria-modal="true"
-        aria-label={label}
-        className={`flex max-h-[80vh] w-full flex-col overflow-hidden rounded-2xl border border-zinc-200 bg-background shadow-2xl dark:border-zinc-800 ${className}`}
-      >
-        {children}
-      </div>
-    </div>,
+      {children}
+    </dialog>,
     document.body,
   );
 }

@@ -25,12 +25,14 @@ import {
   type DesignedStyles,
   type ButtonText,
 } from "./lib/button-style";
+import { withTemplateButtons } from "./lib/button-design";
 import { buttonChoices, buttonCount, withButtons, type ButtonCount } from "./lib/buttons";
 import { KINDS, STYLES } from "./lib/catalog";
 import { COLUMNS, ROWS, positionLabel, scopeHeading, withPosition, type Position } from "./lib/position";
 import { buildPreviewDoc, readTheme, type PreviewTheme, type SectionKind } from "./lib/preview";
 import { fillFor, type Audience, type Length, type Snippet } from "./lib/shared";
-import { hasSpacing, withSpacing } from "./lib/spacing";
+import { hasSiteFixes, hasSpacing, withSpacing } from "./lib/spacing";
+import { SITE_TEMPLATES, siteFixesCss, siteTemplateOf, type SiteTemplate } from "./lib/template";
 
 /** Widths the previews are laid out at. Cards always show the desktop layout, scaled down. */
 const VIEWPORTS = { desktop: 1280, tablet: 820, mobile: 390 } as const;
@@ -46,16 +48,21 @@ type Item = {
   position?: Position | null;
   buttons: Buttons;
   colors: ButtonColorSet;
-  /** The button text: a site template's, custom values, or null for as designed. */
+  /** The button text: a site template's (the chosen template's by default), custom values, or null for as designed. */
   font: ButtonText | null;
+  /** Whether the buttons take the template's button design (the default) or keep the design's own. */
+  siteButtons: boolean;
   /** What each button's colors and text are before any are changed. */
   designed: DesignedStyles[];
-  /** Profiles and content sections only: their spacing and site-fix choices. */
+  /** Spacing (profiles and content sections) and site-fix choices; undefined when there are none. */
   spacing?: Spacing;
 };
 
-/** Whether a design keeps its space above and below, and brings the site fixes. */
-type Spacing = { keepSpace: boolean; siteFixes: boolean };
+/**
+ * Whether a design keeps its space above and below (profiles and content sections only),
+ * and brings its template's site fixes (only when the template has some).
+ */
+type Spacing = { keepSpace?: boolean; siteFixes?: boolean };
 
 const AUDIENCES: { id: Audience; label: string; detail: string }[] = [
   { id: "agent", label: "Individual", detail: "Agent Name, with a Learn More button to /about" },
@@ -122,6 +129,9 @@ function FilterRow({ label, children }: { label: string; children: React.ReactNo
 export default function SectionsTool() {
   // The levels, outermost first: the style set, the kind of section, then either who it's
   // for (sections that name someone) or how much copy it holds (content sections).
+  // The site template comes first: it decides the site fixes, the position rules and the previews.
+  // Until one is picked, it follows the template saved in the palette tool.
+  const [templatePick, setTemplatePick] = useState<SiteTemplate | null>(null);
   const [styleId, setStyleId] = useState(STYLES[0].id);
   const [kind, setKind] = useState<SectionKind>("opening");
   const [audience, setAudience] = useState<Audience>("agent");
@@ -133,14 +143,18 @@ export default function SectionsTool() {
   const [buttonCounts, setButtonCounts] = useState<Record<string, ButtonCount | null>>({});
   // Each design's button colors, by design. Unset means as designed.
   const [buttonColors, setButtonColors] = useState<Record<string, ButtonColorSet>>({});
-  // Each design's button text, by design. Unset means as designed.
+  // Each design's button text, by design. Unset means the chosen template's; null means as designed.
   const [buttonFonts, setButtonFonts] = useState<Record<string, ButtonText | null>>({});
+  // Designs whose buttons keep their own design instead of the template's, by design.
+  const [ownButtons, setOwnButtons] = useState<Record<string, boolean>>({});
   // Profiles and content sections: off and on by default respectively, by design.
   const [keepSpace, setKeepSpace] = useState<Record<string, boolean>>({});
   const [siteFixes, setSiteFixes] = useState<Record<string, boolean>>({});
 
   const savedPalette = useSyncExternalStore(subscribeStorage, readSavedPalette, () => null);
   const theme = useMemo(() => readTheme(savedPalette), [savedPalette]);
+  const template = templatePick ?? siteTemplateOf(theme.templateLabel);
+  const currentTemplate = SITE_TEMPLATES.find((t) => t.id === template)!;
 
   const style = STYLES.find((s) => s.id === styleId) ?? STYLES[0];
   const currentKind = KINDS.find((k) => k.id === kind)!;
@@ -156,41 +170,64 @@ export default function SectionsTool() {
           const value = buttonCounts[key] ?? null;
           const buttons = { choices: buttonChoices(snippet, kind), built: buttonCount(snippet, kind), value };
           const colors = buttonColors[key] ?? [];
-          const font = buttonFonts[key] ?? null;
+          const font = key in buttonFonts ? buttonFonts[key] : { preset: template };
+          const siteButtons = !ownButtons[key];
           const sized = withButtons(snippet, kind, value);
           const designed = designedStyles(sized, kind);
-          const styled = withButtonStyles(sized, kind, colors, font);
+          const colored = withButtonStyles(sized, kind, colors, font);
+          // The template's button design goes after the colors: it leaves colors, size and weight alone.
+          const styled = siteButtons ? withTemplateButtons(colored, kind, template) : colored;
           const filled = { ...styled, html: fillFor(styled.html, audience) };
-          const item = { key, snippet: filled, buttons, colors, font, designed };
+          const item = { key, snippet: filled, buttons, colors, font, siteButtons, designed };
           // Profiles and content sections are full-width sections of their own, with spacing
           // choices; headings sit over a photo and can be positioned.
+          const fixes = hasSiteFixes(template, kind) ? { siteFixes: siteFixes[key] ?? true } : {};
           if (hasSpacing(kind)) {
-            const spacing = { keepSpace: keepSpace[key] ?? false, siteFixes: siteFixes[key] ?? true };
-            return { ...item, snippet: withSpacing(filled, kind, spacing), spacing };
+            const spacing: Spacing = { keepSpace: keepSpace[key] ?? false, ...fixes };
+            return { ...item, snippet: withSpacing(filled, kind, template, spacing), spacing };
           }
           const position = positions[key] ?? null;
-          return { ...item, snippet: scopeHeading(withPosition(filled, position)), position };
+          const placed = scopeHeading(withPosition(filled, position, template));
+          // The site fixes go in after scoping: they're aimed at the template's own elements.
+          if (!("siteFixes" in fixes)) return { ...item, snippet: placed, position };
+          return { ...item, snippet: withSpacing(placed, kind, template, fixes), spacing: fixes, position };
         }),
-    [style, kind, audience, byLength, length, positions, buttonCounts, buttonColors, buttonFonts, keepSpace, siteFixes],
+    [style, kind, audience, byLength, length, positions, buttonCounts, buttonColors, buttonFonts, ownButtons, keepSpace, siteFixes, template],
   );
   const setColors = (key: string, colors: ButtonColorSet) =>
     setButtonColors((all) => ({ ...all, [key]: colors }));
   const setFont = (key: string, font: ButtonText | null) =>
     setButtonFonts((all) => ({ ...all, [key]: font }));
+  const setSiteButtons = (key: string, on: boolean) => setOwnButtons((all) => ({ ...all, [key]: !on }));
   const colorVars = useMemo(() => colorVariables(theme.vars), [theme]);
   const setPosition = (key: string, position: Position | null) =>
     setPositions((all) => ({ ...all, [key]: position }));
   const setButtons = (key: string, count: ButtonCount | null) =>
     setButtonCounts((all) => ({ ...all, [key]: count }));
-  const setSpacing = (key: string, spacing: Spacing) => {
-    setKeepSpace((all) => ({ ...all, [key]: spacing.keepSpace }));
-    setSiteFixes((all) => ({ ...all, [key]: spacing.siteFixes }));
+  const setSpacing = (key: string, { keepSpace: keep, siteFixes: fixes }: Spacing) => {
+    if (keep !== undefined) setKeepSpace((all) => ({ ...all, [key]: keep }));
+    if (fixes !== undefined) setSiteFixes((all) => ({ ...all, [key]: fixes }));
   };
   const open = items.find((item) => item.key === openKey) ?? null;
 
   return (
     <div className="mt-8 flex flex-col gap-5">
       <div className="flex flex-col gap-3 rounded-xl border border-zinc-200 p-4 dark:border-zinc-800">
+        <FilterRow label="Template">
+          {SITE_TEMPLATES.map((t) => (
+            <button
+              key={t.id}
+              type="button"
+              aria-pressed={template === t.id}
+              title={t.hint}
+              onClick={() => setTemplatePick(t.id)}
+              className={chip(template === t.id)}
+            >
+              {t.label}
+            </button>
+          ))}
+        </FilterRow>
+
         <FilterRow label="Style">
           {STYLES.map((s) => (
             <button
@@ -270,7 +307,8 @@ export default function SectionsTool() {
 
       <div className="flex flex-col gap-1 text-sm text-zinc-600 dark:text-zinc-400">
         <h2 className="text-base font-medium text-foreground">
-          {style.label} <span className="text-zinc-400">/</span> {currentKind.label}{" "}
+          {currentTemplate.label} <span className="text-zinc-400">/</span> {style.label}{" "}
+          <span className="text-zinc-400">/</span> {currentKind.label}{" "}
           <span className="text-zinc-400">/</span>{" "}
           {byLength ? currentLength.label : currentAudience.label}{" "}
           <span className="font-normal text-zinc-500">{items.length} designs</span>
@@ -288,18 +326,20 @@ export default function SectionsTool() {
           HTML and CSS change to match: removed buttons take their CSS with them.
         </p>
         <p>
-          Click a design to set its button text size and weight from a site template (Producer,
-          Masterpiece or Visionary), and each button&apos;s border, background and text colors, normal
-          and on hover, from the palette&apos;s :root variables or transparent. The choices are written
-          into its CSS as you make them.
+          Buttons start with {currentTemplate.label}&apos;s button design (padding, border width,
+          corners, spacing) and text size and weight, so they match the site. Click a design to keep
+          its own instead, set custom text, or set each button&apos;s border, background and text
+          colors, normal and on hover, from the palette&apos;s :root variables or transparent. The
+          choices are written into its CSS as you make them.
         </p>
-        {kind !== "opening" && (
-          <p>
-            Each design starts with no padding or margin above and below it; turn on Top &amp;
-            bottom space to keep the design&apos;s own. Site fixes (paragraphs that wrap, and no
-            margin under the boxed text) are added to the CSS by default and can be turned off.
-          </p>
-        )}
+        <p>
+          {currentTemplate.label}: {currentTemplate.hint}{" "}
+          {kind !== "opening" &&
+            "Each design starts with no padding or margin above and below it; turn on Top & bottom space to keep the design's own. "}
+          {hasSiteFixes(template, kind)
+            ? "The template's site fixes are added to the CSS by default and can be turned off (hover Site fixes to see them)."
+            : "This template needs no site fixes for headings."}
+        </p>
         {kind === "opening" && (
           <p>
             Use the grid on a design to choose where it sits over the photo, such as bottom left or
@@ -325,6 +365,7 @@ export default function SectionsTool() {
             key={item.key}
             index={i + 1}
             kind={kind}
+            template={template}
             snippet={item.snippet}
             position={item.position}
             onPosition={(position) => setPosition(item.key, position)}
@@ -341,6 +382,7 @@ export default function SectionsTool() {
       {open && (
         <Detail
           kind={kind}
+          template={template}
           snippet={open.snippet}
           position={open.position}
           onPosition={(position) => setPosition(open.key, position)}
@@ -353,6 +395,8 @@ export default function SectionsTool() {
           onColors={(colors) => setColors(open.key, colors)}
           font={open.font}
           onFont={(font) => setFont(open.key, font)}
+          siteButtons={open.siteButtons}
+          onSiteButtons={(on) => setSiteButtons(open.key, on)}
           colorVars={colorVars}
           theme={theme}
           onClose={() => setOpenKey(null)}
@@ -458,6 +502,9 @@ function ButtonStylePanel({
   onChange,
   font,
   onFont,
+  template,
+  siteButtons,
+  onSiteButtons,
   colorVars,
   theme,
 }: {
@@ -468,10 +515,14 @@ function ButtonStylePanel({
   onChange: (colors: ButtonColorSet) => void;
   font: ButtonText | null;
   onFont: (font: ButtonText | null) => void;
+  template: SiteTemplate;
+  siteButtons: boolean;
+  onSiteButtons: (on: boolean) => void;
   colorVars: string[];
   theme: PreviewTheme;
 }) {
   if (count === 0) return null;
+  const templateLabel = SITE_TEMPLATES.find((t) => t.id === template)!.label;
   const set = (button: number, state: ColorState, part: ColorPart, choice: string) => {
     const next = [...colors];
     const states = { ...next[button] };
@@ -509,9 +560,10 @@ function ButtonStylePanel({
     count > 1 ? (button === 0 ? "First button" : "Second button") : "Button";
 
   const own = designed[0]?.normal;
+  // The chosen template's text (the default), or the design's own.
   const textOptions = [
+    ...FONT_PRESETS.filter((p) => p.id === template),
     { id: null, label: "As designed", size: own?.size ?? "", weight: own?.weight ?? "" },
-    ...FONT_PRESETS,
   ];
   const custom = font?.preset === "custom" ? font : null;
   const sizeValid = !custom || !custom.size.trim() || !!cleanSize(custom.size);
@@ -527,9 +579,44 @@ function ButtonStylePanel({
       className="flex flex-col gap-4 border-t border-zinc-200 p-4 lg:w-96 lg:shrink-0 lg:overflow-y-auto lg:border-t-0 lg:border-l dark:border-zinc-800"
     >
       <div>
+        <h3 className="text-sm font-medium">Button design</h3>
+        <p className="mt-0.5 text-xs text-zinc-500">
+          Padding, border width, corners, spacing and case. {templateLabel}&apos;s by default, so the
+          buttons match the site&apos;s; the colors below still apply either way.
+        </p>
+        <div role="group" aria-label="Button design" className="mt-2 grid grid-cols-2 gap-1.5">
+          {[
+            { on: true, label: templateLabel, detail: "The site's buttons" },
+            { on: false, label: "As designed", detail: "This design's own" },
+          ].map((option) => {
+            const active = siteButtons === option.on;
+            return (
+              <button
+                key={option.label}
+                type="button"
+                aria-pressed={active}
+                onClick={() => onSiteButtons(option.on)}
+                className={`flex flex-col items-start rounded-md border px-2.5 py-1.5 text-left transition-colors ${
+                  active
+                    ? "border-blue-600 bg-blue-50 dark:border-blue-500 dark:bg-blue-950/40"
+                    : "border-zinc-300 hover:border-zinc-400 dark:border-zinc-700 dark:hover:border-zinc-500"
+                }`}
+              >
+                <span className={`text-xs font-medium ${active ? "text-blue-700 dark:text-blue-300" : ""}`}>
+                  {option.label}
+                </span>
+                <span className="text-[11px] text-zinc-500">{option.detail}</span>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      <div>
         <h3 className="text-sm font-medium">Button text</h3>
         <p className="mt-0.5 text-xs text-zinc-500">
-          Font size and weight for every button, from a site template or your own.
+          Font size and weight for every button: {templateLabel}&apos;s by default, the design&apos;s
+          own, or your own.
         </p>
         <div role="group" aria-label="Button text" className="mt-2 grid grid-cols-2 gap-1.5">
           {textOptions.map((option) => {
@@ -692,8 +779,17 @@ function ButtonStylePanel({
 }
 
 /** On/off switches for a profile or content section's spacing and site fixes. */
-function SpacingToggles({ spacing, onChange }: { spacing: Spacing; onChange: (spacing: Spacing) => void }) {
-  const toggles: { id: keyof Spacing; label: string; title: string }[] = [
+function SpacingToggles({
+  spacing,
+  onChange,
+  fixes,
+}: {
+  spacing: Spacing;
+  onChange: (spacing: Spacing) => void;
+  /** The site fixes' CSS, shown on hover. */
+  fixes: string;
+}) {
+  const all: { id: keyof Spacing; label: string; title: string }[] = [
     {
       id: "keepSpace",
       label: "Top & bottom space",
@@ -702,9 +798,11 @@ function SpacingToggles({ spacing, onChange }: { spacing: Spacing; onChange: (sp
     {
       id: "siteFixes",
       label: "Site fixes",
-      title: "Add .redesign p { white-space: normal } and no margin under .boxed-text__description",
+      title: `Add this template's fixes:\n\n${fixes}`,
     },
   ];
+  // Only the choices this design has.
+  const toggles = all.filter((t) => spacing[t.id] !== undefined);
   return (
     <div className="flex shrink-0 items-center gap-1.5">
       {toggles.map((t) => (
@@ -737,6 +835,7 @@ const positionText = (position: Position | null) =>
 function Card({
   index,
   kind,
+  template,
   snippet,
   position,
   onPosition,
@@ -749,6 +848,7 @@ function Card({
 }: {
   index: number;
   kind: SectionKind;
+  template: SiteTemplate;
   snippet: Snippet;
   position?: Position | null;
   onPosition: (position: Position | null) => void;
@@ -774,8 +874,8 @@ function Card({
   }, [near, ref]);
 
   const doc = useMemo(
-    () => (near ? buildPreviewDoc(kind, snippet.html, snippet.css, theme) : null),
-    [near, kind, snippet, theme],
+    () => (near ? buildPreviewDoc(kind, snippet.html, snippet.css, theme, template) : null),
+    [near, kind, snippet, theme, template],
   );
 
   return (
@@ -810,7 +910,7 @@ function Card({
         {(buttons.choices.length > 0 || position !== undefined || spacing) && (
           <div className="flex flex-wrap items-center gap-x-5 gap-y-2">
             <ButtonPicker buttons={buttons} onChange={onButtons} />
-            {spacing && <SpacingToggles spacing={spacing} onChange={onSpacing} />}
+            {spacing && <SpacingToggles spacing={spacing} onChange={onSpacing} fixes={siteFixesCss(template, kind)} />}
             {position !== undefined && (
               <div className="flex items-center gap-2">
                 <PositionPicker value={position} onChange={onPosition} fullWidth={snippet.fullWidth} />
@@ -897,6 +997,7 @@ function PreviewFrame({
 
 function Detail({
   kind,
+  template,
   snippet,
   position,
   onPosition,
@@ -909,11 +1010,14 @@ function Detail({
   onColors,
   font,
   onFont,
+  siteButtons,
+  onSiteButtons,
   colorVars,
   theme,
   onClose,
 }: {
   kind: SectionKind;
+  template: SiteTemplate;
   snippet: Snippet;
   position?: Position | null;
   onPosition: (position: Position | null) => void;
@@ -926,6 +1030,8 @@ function Detail({
   onColors: (colors: ButtonColorSet) => void;
   font: ButtonText | null;
   onFont: (font: ButtonText | null) => void;
+  siteButtons: boolean;
+  onSiteButtons: (on: boolean) => void;
   colorVars: string[];
   theme: PreviewTheme;
   onClose: () => void;
@@ -933,8 +1039,8 @@ function Detail({
   const [device, setDevice] = useState<Device>("desktop");
   const [stageRef, stageWidth] = useElementWidth<HTMLDivElement>();
   const doc = useMemo(
-    () => buildPreviewDoc(kind, snippet.html, snippet.css, theme),
-    [kind, snippet, theme],
+    () => buildPreviewDoc(kind, snippet.html, snippet.css, theme, template),
+    [kind, snippet, theme, template],
   );
 
   return (
@@ -948,7 +1054,7 @@ function Detail({
           </div>
         )}
         <ButtonPicker buttons={buttons} onChange={onButtons} />
-        {spacing && <SpacingToggles spacing={spacing} onChange={onSpacing} />}
+        {spacing && <SpacingToggles spacing={spacing} onChange={onSpacing} fixes={siteFixesCss(template, kind)} />}
         {(Object.keys(VIEWPORTS) as Device[]).map((d) => (
           <button
             key={d}
@@ -996,6 +1102,9 @@ function Detail({
           onChange={onColors}
           font={font}
           onFont={onFont}
+          template={template}
+          siteButtons={siteButtons}
+          onSiteButtons={onSiteButtons}
           colorVars={colorVars}
           theme={theme}
         />

@@ -1,5 +1,6 @@
 "use client";
 
+import { askConfirm, askText } from "@/components/ask-dialog";
 import { useLiveQuery } from "dexie-react-hooks";
 import { useState } from "react";
 import Modal from "./modal";
@@ -20,7 +21,7 @@ export default function TemplatesDialog({
     templates?.find((t) => t.id === selectedId) ?? (selectedId === null ? templates?.[0] : undefined);
 
   async function create() {
-    const input = window.prompt("Name the new template", "");
+    const input = await askText({ title: "New template", placeholder: "Template name", confirmLabel: "Create" });
     if (input === null) return;
     const now = Date.now();
     const id = newId();
@@ -30,7 +31,7 @@ export default function TemplatesDialog({
   }
 
   async function remove(t: Template) {
-    if (!window.confirm(`Delete the template “${t.name}”? Notes made from it are not affected.`)) return;
+    if (!(await askConfirm({ title: `Delete the template “${t.name}”?`, message: "Notes made from it are not affected.", confirmLabel: "Delete", danger: true }))) return;
     await deleteRecords("templates", [t.id]);
     setSelectedId(null);
   }

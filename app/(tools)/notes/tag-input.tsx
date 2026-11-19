@@ -51,6 +51,9 @@ export default function TagInput({
         onKeyDown={(e) => {
           if (e.key === "Enter") {
             e.preventDefault();
+            // Enter also confirms a word in Japanese/Chinese/Korean input: don't save a half-typed tag.
+            // keyCode 229 covers Safari, where isComposing is already false by then.
+            if (e.nativeEvent.isComposing || e.nativeEvent.keyCode === 229) return;
             add(draft);
           } else if (e.key === "Backspace" && !draft && tags.length) {
             onChange(tags.slice(0, -1));

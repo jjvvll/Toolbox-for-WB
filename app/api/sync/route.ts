@@ -51,6 +51,13 @@ export async function GET() {
 }
 
 const isObj = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v);
+
+/** The compliance column: the note's compliance parts, or null. Text from the first version (one text area) counts as State compliance. */
+function complianceColumn(value: unknown) {
+  if (isObj(value)) return value;
+  if (typeof value === "string" && value) return { state: { link: "", notes: value } };
+  return null;
+}
 const isTable = (v: unknown): v is Table => TABLES.includes(v as Table);
 
 /** Saves changed records, deletes, and error log entries. */
@@ -68,15 +75,27 @@ export async function POST(request: Request) {
   for (const table of TABLES) {
     const records = (body.puts?.[table] ?? []).filter((r) => isObj(r) && typeof r.id === "string" && typeof r.updatedAt === "number");
     if (!records.length) continue;
-    const rows = records.map((r) => ({
+    const rows: Record<string, unknown>[] = records.map((r) => ({
       id: r.id,
       [LABEL_COLUMN[table]]: String(r[LABEL_COLUMN[table]] ?? ""),
       data: r,
       updated_at: r.updatedAt,
       deleted: false,
       synced_at: now,
+      // Notes: a copy of the compliance page in its own column, for browsing in Supabase.
+      ...(table === "notes" ? { compliance: complianceColumn(r.compliance) } : {}),
     }));
-    const { error } = await db.from(table).upsert(rows, { onConflict: "id" });
+    let { error } = await db.from(table).upsert(rows, { onConflict: "id" });
+    // The compliance column comes from a later addition to schema.sql; until that's run,
+    // save without it (the compliance page is in `data` either way).
+    if (error?.code === "PGRST204" && /compliance/.test(error.message)) {
+      const withoutColumn = rows.map((row) => {
+        const copy = { ...row };
+        delete copy.compliance;
+        return copy;
+      });
+      ({ error } = await db.from(table).upsert(withoutColumn, { onConflict: "id" }));
+    }
     if (error) return failure(error);
   }
 
