@@ -7,7 +7,15 @@ export type Tool = {
   icon: ReactNode;
   /** Tailwind classes for the icon tile. */
   accent: string;
+  /** Where the tool is listed in the side rails: website work on the left, media on the right. */
+  group: ToolGroup;
 };
+
+export type ToolGroup = "site" | "media";
+export const TOOL_GROUPS: { id: ToolGroup; label: string }[] = [
+  { id: "site", label: "Websites & writing" },
+  { id: "media", label: "Images & video" },
+];
 
 function Icon({ children }: { children: ReactNode }) {
   return (
@@ -30,6 +38,7 @@ function Icon({ children }: { children: ReactNode }) {
 export const TOOLS: Tool[] = [
   {
     name: "PDF Cover",
+    group: "media",
     description: "Render page 1 of one or more PDFs to downloadable images.",
     href: "/pdf-cover",
     accent: "bg-rose-100 text-rose-600 dark:bg-rose-500/15 dark:text-rose-400",
@@ -43,6 +52,7 @@ export const TOOLS: Tool[] = [
   },
   {
     name: "Folder Thumbnails",
+    group: "media",
     description: "Cover images for every video and PDF in a folder, made on your device.",
     href: "/folder-thumbnails",
     accent: "bg-orange-100 text-orange-600 dark:bg-orange-500/15 dark:text-orange-400",
@@ -55,6 +65,7 @@ export const TOOLS: Tool[] = [
   },
   {
     name: "Color Palette",
+    group: "site",
     description: "Pick colors from a screenshot and try them on dark, light, and color-block layouts.",
     href: "/color-palette",
     accent: "bg-teal-100 text-teal-600 dark:bg-teal-500/15 dark:text-teal-400",
@@ -69,6 +80,7 @@ export const TOOLS: Tool[] = [
   },
   {
     name: "Video Compressor",
+    group: "media",
     description: "Shrink videos on your computer and save them next to the originals.",
     href: "/video-compressor",
     accent: "bg-indigo-100 text-indigo-600 dark:bg-indigo-500/15 dark:text-indigo-400",
@@ -82,6 +94,7 @@ export const TOOLS: Tool[] = [
   },
   {
     name: "Logo to SVG",
+    group: "media",
     description: "Trace a PNG or JPG logo into a clean SVG, single or multi-color.",
     href: "/logo-to-svg",
     accent: "bg-fuchsia-100 text-fuchsia-600 dark:bg-fuchsia-500/15 dark:text-fuchsia-400",
@@ -96,6 +109,7 @@ export const TOOLS: Tool[] = [
   },
   {
     name: "Headshot Maker",
+    group: "media",
     description: "Auto-detect the face in a photo and crop it into a profile picture.",
     href: "/headshot",
     accent: "bg-lime-100 text-lime-600 dark:bg-lime-500/15 dark:text-lime-400",
@@ -109,6 +123,7 @@ export const TOOLS: Tool[] = [
   },
   {
     name: "Code Editor",
+    group: "site",
     description: "Write HTML and CSS in a VS Code-style editor with a live preview.",
     href: "/code-editor",
     accent: "bg-cyan-100 text-cyan-600 dark:bg-cyan-500/15 dark:text-cyan-400",
@@ -120,6 +135,7 @@ export const TOOLS: Tool[] = [
   },
   {
     name: "Section Library",
+    group: "site",
     description: "Ready-made homepage headings, profile sections and content layouts to copy as HTML and CSS.",
     href: "/sections",
     accent: "bg-pink-100 text-pink-600 dark:bg-pink-500/15 dark:text-pink-400",
@@ -132,7 +148,21 @@ export const TOOLS: Tool[] = [
     ),
   },
   {
+    name: "Audit",
+    group: "site",
+    description: "SEO, broken pages, dead links, spelling, and site-wide search for links, words, colors and letter case on LP sites.",
+    href: "/audit",
+    accent: "bg-yellow-100 text-yellow-700 dark:bg-yellow-500/15 dark:text-yellow-400",
+    icon: (
+      <Icon>
+        <path d="M9 11l2 2 4-4" />
+        <path d="M12 3l7 3v5c0 4.5-3 8.5-7 10-4-1.5-7-5.5-7-10V6z" />
+      </Icon>
+    ),
+  },
+  {
     name: "Content Checker",
+    group: "site",
     description: "Check whether your copy is on a site, and see what's missing or changed.",
     href: "/content-check",
     accent: "bg-blue-100 text-blue-600 dark:bg-blue-500/15 dark:text-blue-400",
@@ -148,6 +178,7 @@ export const TOOLS: Tool[] = [
   },
   {
     name: "Drive Video Thumbnail",
+    group: "media",
     description: "Grab and download the thumbnail of a public Google Drive video.",
     href: "/drive-thumbnail",
     accent: "bg-emerald-100 text-emerald-600 dark:bg-emerald-500/15 dark:text-emerald-400",
@@ -160,6 +191,7 @@ export const TOOLS: Tool[] = [
   },
   {
     name: "YouTube Video",
+    group: "media",
     description: "Get a video's thumbnail, title, and an autoplay embed link.",
     href: "/youtube",
     accent: "bg-red-100 text-red-600 dark:bg-red-500/15 dark:text-red-400",
@@ -172,6 +204,7 @@ export const TOOLS: Tool[] = [
   },
   {
     name: "YouTube Channel",
+    group: "media",
     description: "List every upload on a channel with copyable links.",
     href: "/channel",
     accent: "bg-violet-100 text-violet-600 dark:bg-violet-500/15 dark:text-violet-400",
@@ -186,7 +219,8 @@ export const TOOLS: Tool[] = [
   },
   {
     name: "Notes",
-    description: "Rich-text notes with folders, tags, and templates, stored in your browser.",
+    group: "site",
+    description: "Client notes with links, ticket and opportunity notes, and a highlighter. Stays open while you use other tools.",
     href: "/notes",
     accent: "bg-amber-100 text-amber-600 dark:bg-amber-500/15 dark:text-amber-400",
     icon: (
@@ -199,12 +233,41 @@ export const TOOLS: Tool[] = [
   },
   {
     name: "Phone Formatter",
+    group: "site",
     description: "Clean up a US phone number into the format you need.",
     href: "/phone-formatter",
     accent: "bg-sky-100 text-sky-600 dark:bg-sky-500/15 dark:text-sky-400",
     icon: (
       <Icon>
         <path d="M5 4h3.5l1.5 4.5-2 1.5a11 11 0 0 0 6 6l1.5-2 4.5 1.5V19a2 2 0 0 1-2 2A16 16 0 0 1 3 6a2 2 0 0 1 2-2" />
+      </Icon>
+    ),
+  },
+  {
+    name: "Error Log",
+    group: "site",
+    description: "Errors logged by every tool, grouped, with details to copy or download.",
+    href: "/error-log",
+    accent: "bg-red-100 text-red-600 dark:bg-red-500/15 dark:text-red-400",
+    icon: (
+      <Icon>
+        <path d="M12 3 2.5 19.5h19z" />
+        <path d="M12 10v4.5" />
+        <path d="M12 17.5h.01" />
+      </Icon>
+    ),
+  },
+  {
+    name: "AI Rewrite",
+    group: "site",
+    description: "Fix grammar or make text formal or polite with Gemini or Claude, using your own key.",
+    href: "/rewrite",
+    accent: "bg-purple-100 text-purple-600 dark:bg-purple-500/15 dark:text-purple-400",
+    icon: (
+      <Icon>
+        <path d="M4 20h4L19 9a2.8 2.8 0 0 0-4-4L4 16z" />
+        <path d="m13.5 6.5 4 4" />
+        <path d="M19 15l.8 1.7 1.7.8-1.7.8L19 20l-.8-1.7-1.7-.8 1.7-.8z" />
       </Icon>
     ),
   },

@@ -27,7 +27,7 @@ import {
 } from "./lib/button-style";
 import { buttonChoices, buttonCount, withButtons, type ButtonCount } from "./lib/buttons";
 import { KINDS, STYLES } from "./lib/catalog";
-import { COLUMNS, ROWS, positionLabel, withPosition, type Position } from "./lib/position";
+import { COLUMNS, ROWS, positionLabel, scopeHeading, withPosition, type Position } from "./lib/position";
 import { buildPreviewDoc, readTheme, type PreviewTheme, type SectionKind } from "./lib/preview";
 import { fillFor, type Audience, type Length, type Snippet } from "./lib/shared";
 import { hasSpacing, withSpacing } from "./lib/spacing";
@@ -169,7 +169,7 @@ export default function SectionsTool() {
             return { ...item, snippet: withSpacing(filled, kind, spacing), spacing };
           }
           const position = positions[key] ?? null;
-          return { ...item, snippet: withPosition(filled, position), position };
+          return { ...item, snippet: scopeHeading(withPosition(filled, position)), position };
         }),
     [style, kind, audience, byLength, length, positions, buttonCounts, buttonColors, buttonFonts, keepSpace, siteFixes],
   );

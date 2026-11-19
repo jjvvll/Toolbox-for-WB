@@ -10,7 +10,7 @@ export default function NotesPage() {
   return (
     <>
       <ToolHeader title="Notes">
-        Rich-text notes with folders, tags, and templates, saved only in this browser.
+        Client notes in a grid: links (front end, client folder, briefing, onboarding), main ticket notes and opportunity notes, with a highlighter for key words. Open a note and it stays open while you use other tools. Saved in this browser and to your database.
         Press Ctrl+K to search.
       </ToolHeader>
       <NotesLoader />

@@ -1,5 +1,5 @@
 import TurndownService from "turndown";
-import type { Note } from "./db";
+import { DESIGN_FIELDS, LINK_FIELDS, NOTE_SECTIONS, sectionsOf, type Note } from "./db";
 
 let turndown: TurndownService | null = null;
 
@@ -71,6 +71,49 @@ export function htmlToPlainText(html: string): string {
 
   return walk(doc.body).replace(/\n{3,}/g, "\n\n").trim();
 }
+
+const escapeHtml = (s: string) => s.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]!);
+const linkHtml = (value: string) =>
+  /^https?:\/\//i.test(value.trim()) ? `<a href="${escapeHtml(value.trim())}">${escapeHtml(value.trim())}</a>` : escapeHtml(value);
+
+type NoteFields = Pick<Note, "content" | "links" | "opportunity" | "sections" | "opportunities" | "sectionLinks" | "design">;
+
+/**
+ * Every field of a note as one HTML document, in the note's order: the links, Main
+ * ticket, Opportunity, then each section. Used for copying and for the search text.
+ * Empty fields are left out.
+ */
+export function noteFullHtml(note: NoteFields): string {
+  const parts: string[] = [];
+  const links = LINK_FIELDS.filter((f) => note.links?.[f.key]?.trim());
+  if (links.length) parts.push(`<ul>${links.map((f) => `<li><strong>${f.label}:</strong> ${linkHtml(note.links![f.key]!)}</li>`).join("")}</ul>`);
+  if (htmlToPlainText(note.content)) parts.push(`<h2>Main ticket</h2>${note.content}`);
+  const o = note.opportunity;
+  if (o && (htmlToPlainText(o.notes) || o.reference.trim() || htmlToPlainText(o.reason))) {
+    parts.push("<h2>Opportunity</h2>");
+    if (htmlToPlainText(o.notes)) parts.push(`<p><strong>Notes:</strong></p>${o.notes}`);
+    if (o.reference.trim()) parts.push(`<p><strong>Reference:</strong> ${linkHtml(o.reference)}</p>`);
+    if (htmlToPlainText(o.reason)) parts.push(`<p><strong>Reason:</strong></p>${o.reason}`);
+  }
+  const sections = sectionsOf(note);
+  for (const s of NOTE_SECTIONS) {
+    const body: string[] = [];
+    const link = note.sectionLinks?.[s.key]?.trim();
+    if (link) body.push(`<p><strong>Link:</strong> ${linkHtml(link)}</p>`);
+    if (htmlToPlainText(sections[s.key] ?? "")) body.push(`<p><strong>Notes:</strong></p>${sections[s.key]}`);
+    if (s.key === "design" && note.design) {
+      if (note.design.moodboard.trim()) body.push(`<p><strong>Moodboard:</strong> ${linkHtml(note.design.moodboard)}</p>`);
+      for (const f of DESIGN_FIELDS) {
+        if (htmlToPlainText(note.design[f.key])) body.push(`<p><strong>${f.label}:</strong></p>${note.design[f.key]}`);
+      }
+    }
+    if (body.length) parts.push(`<h2>${s.label}</h2>${body.join("")}`);
+  }
+  return parts.join("");
+}
+
+/** Plain text of every field, for search and card previews. */
+export const noteSearchText = (note: NoteFields) => htmlToPlainText(noteFullHtml(note));
 
 export function noteToPlainText(note: Pick<Note, "title" | "content">): string {
   return [note.title.trim(), htmlToPlainText(note.content)].filter(Boolean).join("\n\n");

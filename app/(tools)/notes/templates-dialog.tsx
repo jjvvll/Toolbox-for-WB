@@ -4,7 +4,7 @@ import { useLiveQuery } from "dexie-react-hooks";
 import { useState } from "react";
 import Modal from "./modal";
 import RichEditor from "./rich-editor";
-import { db, newId, type Template } from "./lib/db";
+import { db, deleteRecords, newId, type Template } from "./lib/db";
 import { useAutosave } from "./lib/use-autosave";
 
 export default function TemplatesDialog({
@@ -31,7 +31,7 @@ export default function TemplatesDialog({
 
   async function remove(t: Template) {
     if (!window.confirm(`Delete the template “${t.name}”? Notes made from it are not affected.`)) return;
-    await db.templates.delete(t.id);
+    await deleteRecords("templates", [t.id]);
     setSelectedId(null);
   }
 

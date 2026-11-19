@@ -114,9 +114,13 @@ export function buttons(options: ButtonOptions = {}): string {
 }
 
 const RESET = `section { padding-top: 0 !important; padding-bottom: 0 !important }`;
-// The opening description keeps line breaks, so without this the HTML's own
-// line breaks would show up as blank lines.
-const ROOT = `.hero-copy { white-space: normal }`;
+// The same starting point in every template's description box. Producer and
+// Masterpiece keep line breaks (so the HTML's own would show up as blank lines),
+// space the copy out and center it; Visionary's box does none of that and can
+// shrink to its content, which would squeeze the grid layouts.
+const ROOT = `.hero-copy { box-sizing: border-box; width: 100%; white-space: normal; text-align: center; letter-spacing: 0.1em }
+  .hero-copy *, .hero-copy *::before, .hero-copy *::after { box-sizing: border-box }
+  .hero-copy :where(p) { margin: 0 0 10px }`;
 
 export function opening(id: string, name: string, html: string, ...css: string[]): Snippet {
   const snippet: Snippet = { id, name, html, css: formatCss([RESET, ROOT, ...css].join("\n")) };

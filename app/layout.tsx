@@ -1,6 +1,8 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import AnimeSceneLoader from "@/components/anime-scene-loader";
+import ErrorCapture from "@/components/error-capture";
+import SyncAgent from "@/components/sync-agent";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -25,6 +27,8 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
       <body className="min-h-full flex flex-col">
+        <ErrorCapture />
+        <SyncAgent />
         <AnimeSceneLoader />
         {children}
       </body>

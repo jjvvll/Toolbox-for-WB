@@ -1,5 +1,5 @@
 import { htmlToPlainText } from "./convert";
-import { db, type Folder, type Note, type Template } from "./db";
+import { LINK_FIELDS, NOTE_SECTIONS, db, type Folder, type Note, type Template } from "./db";
 
 const FORMAT = "toolbox-notes";
 
@@ -58,10 +58,34 @@ export function parseBackup(json: string) {
     .map((n) => {
       const content = str(n.content);
       const folderId = str(n.folderId) || null;
+      const links = Object.fromEntries(
+        LINK_FIELDS.map((f) => [f.key, isObj(n.links) ? str(n.links[f.key]) : ""]).filter(([, v]) => v),
+      );
+      const asOpportunity = (o: unknown) => (isObj(o) ? { notes: str(o.notes), reference: str(o.reference), reason: str(o.reason) } : undefined);
+      const sections = isObj(n.sections)
+        ? Object.fromEntries(NOTE_SECTIONS.map((s) => [s.key, str((n.sections as Record<string, unknown>)[s.key])]).filter(([, v]) => v))
+        : undefined;
+      // Backups from the first version of the layout: notes, reference and reason per section.
+      const opportunities = isObj(n.opportunities)
+        ? Object.fromEntries(NOTE_SECTIONS.flatMap((s) => {
+            const o = asOpportunity((n.opportunities as Record<string, unknown>)[s.key]);
+            return o ? [[s.key, o]] : [];
+          }))
+        : undefined;
       return {
         id: str(n.id),
         title: str(n.title),
         content,
+        links,
+        opportunity: asOpportunity(n.opportunity),
+        sectionLinks: isObj(n.sectionLinks)
+          ? Object.fromEntries(NOTE_SECTIONS.map((x) => [x.key, str((n.sectionLinks as Record<string, unknown>)[x.key])]).filter(([, v]) => v))
+          : undefined,
+        design: isObj(n.design)
+          ? { moodboard: str(n.design.moodboard), typography: str(n.design.typography), summary: str(n.design.summary), more: str(n.design.more) }
+          : undefined,
+        sections,
+        opportunities,
         text: str(n.text) || htmlToPlainText(content),
         folderId,
         tags: Array.isArray(n.tags) ? n.tags.filter((t): t is string => typeof t === "string") : [],

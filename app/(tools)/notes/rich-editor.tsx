@@ -2,8 +2,10 @@
 
 import { EditorContent, useEditor, useEditorState, type Editor } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
+import Highlight from "@tiptap/extension-highlight";
 import { Placeholder } from "@tiptap/extensions";
 import { useEffect, useRef } from "react";
+import { useRegisterEditor } from "./editor-registry";
 
 export type EditorChange = { html: string; text: string };
 
@@ -23,12 +25,20 @@ export default function RichEditor({
   placeholder = "Start writing…",
   autoFocus = false,
   minHeight = "min-h-[50vh]",
+  compact = false,
+  fieldId,
+  fieldLabel,
 }: {
   content: string;
   onChange: (change: EditorChange) => void;
   placeholder?: string;
   autoFocus?: boolean;
   minHeight?: string;
+  /** A small field: fewer toolbar buttons (no headings, quotes or code). */
+  compact?: boolean;
+  /** Registers the editor for the highlights checklist, under this id and label. */
+  fieldId?: string;
+  fieldLabel?: string;
 }) {
   const editorRef = useRef<Editor | null>(null);
   const editor = useEditor({
@@ -47,6 +57,8 @@ export default function RichEditor({
         },
       }),
       Placeholder.configure({ placeholder }),
+      // Highlighter for important keywords, in a few colors.
+      Highlight.configure({ multicolor: true }),
     ],
     content,
     editorProps: {
@@ -68,16 +80,26 @@ export default function RichEditor({
   useEffect(() => {
     editorRef.current = editor;
   }, [editor]);
+  useRegisterEditor(editor, fieldId, fieldLabel);
 
   return (
     <div className="flex flex-col overflow-hidden rounded-xl border border-zinc-200 dark:border-zinc-800">
-      {editor && <Toolbar editor={editor} />}
+      {editor && <Toolbar editor={editor} compact={compact} />}
       <EditorContent editor={editor} />
     </div>
   );
 }
 
-function Toolbar({ editor }: { editor: Editor }) {
+/** Highlighter colors: soft enough to read text through, in light and dark mode. */
+export const HIGHLIGHTS = [
+  { name: "Yellow", color: "#fde047" },
+  { name: "Green", color: "#86efac" },
+  { name: "Pink", color: "#f9a8d4" },
+  { name: "Blue", color: "#93c5fd" },
+  { name: "Orange", color: "#fdba74" },
+];
+
+function Toolbar({ editor, compact }: { editor: Editor; compact: boolean }) {
   const state = useEditorState({
     editor,
     selector: ({ editor: e }) => ({
@@ -93,6 +115,7 @@ function Toolbar({ editor }: { editor: Editor }) {
       quote: e.isActive("blockquote"),
       codeBlock: e.isActive("codeBlock"),
       link: e.isActive("link"),
+      highlight: (e.getAttributes("highlight").color as string | undefined) ?? (e.isActive("highlight") ? HIGHLIGHTS[0].color : null),
       href: e.isActive("link") ? ((e.getAttributes("link").href as string | undefined) ?? null) : null,
       canUndo: e.can().undo(),
       canRedo: e.can().redo(),
@@ -129,10 +152,40 @@ function Toolbar({ editor }: { editor: Editor }) {
     { label: "↷", title: "Redo (Ctrl+Shift+Z)", disabled: !state.canRedo, run: () => chain().redo().run() },
   ];
 
+  const SMALL = new Set(["Bold (Ctrl+B)", "Italic (Ctrl+I)", "Strikethrough", "Bullet list", "Numbered list", "Link (or select text and paste a URL)", "Undo (Ctrl+Z)", "Redo (Ctrl+Shift+Z)"]);
+  const shown = compact ? buttons.filter((b) => SMALL.has(b.title)) : buttons;
+
   return (
     <div className="border-b border-zinc-200 bg-zinc-50 dark:border-zinc-800 dark:bg-zinc-900/50">
-      <div className="flex flex-wrap gap-0.5 p-1">
-        {buttons.map((b) => (
+      <div className="flex flex-wrap items-center gap-0.5 p-1">
+        {/* Highlighter: select words, pick a color. The active color is ringed; ✕ removes it. */}
+        <span className="flex items-center gap-0.5 border-r border-zinc-200 pr-1 dark:border-zinc-700" role="group" aria-label="Highlight">
+          {HIGHLIGHTS.map((h) => (
+            <button
+              key={h.color}
+              type="button"
+              title={`Highlight ${h.name.toLowerCase()} (select words first)`}
+              aria-label={`Highlight ${h.name.toLowerCase()}`}
+              aria-pressed={state.highlight === h.color}
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={() => chain().toggleHighlight({ color: h.color }).run()}
+              className={`h-5 w-5 rounded ${state.highlight === h.color ? "ring-2 ring-zinc-700 ring-offset-1 dark:ring-zinc-200" : "ring-1 ring-black/10"}`}
+              style={{ background: h.color }}
+            />
+          ))}
+          <button
+            type="button"
+            title="Remove highlight"
+            aria-label="Remove highlight"
+            disabled={!state.highlight}
+            onMouseDown={(e) => e.preventDefault()}
+            onClick={() => chain().unsetHighlight().run()}
+            className="min-w-6 rounded-md px-1 text-xs text-zinc-500 hover:bg-zinc-200/70 disabled:opacity-30 dark:hover:bg-zinc-800"
+          >
+            ✕
+          </button>
+        </span>
+        {shown.map((b) => (
           <button
             key={b.title}
             type="button"

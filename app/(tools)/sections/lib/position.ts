@@ -38,6 +38,37 @@ export function positionCss(snippet: Snippet, position: Position): string {
   return formatCss(rules.join("\n"));
 }
 
+/**
+ * The description box a heading is pasted into: `.opening-description` in
+ * Producer and Masterpiece, `.opening-search__description` in Visionary.
+ */
+export const HEADING_HOST = ":is(.opening-description, .opening-search__description)";
+
+/** Rules aimed at the section around the heading, which stay as they are. */
+const AROUND = /^(section\b|\.opening-with-search\b|\.opening-search)/;
+
+/**
+ * The design with every rule limited to the description box. That keeps rules
+ * like `.buttons` off the template's own elements, and outranks the template's
+ * type rules for the box (e.g. `.opening-search__description h2`) so the design
+ * looks the same in every template. Every rule gains the same weight, so the
+ * design's rules still override each other as before. Runs last, on formatted CSS:
+ * each selector sits on its own line ending in "," or " {".
+ */
+export function scopeHeading(snippet: Snippet): Snippet {
+  const css = snippet.css
+    .split("\n")
+    .map((line) => {
+      const match = line.match(/^(\s*)(.+?)(,| \{)$/);
+      if (!match) return line;
+      const [, pad, selector, end] = match;
+      if (selector.startsWith("@") || selector.startsWith("/*") || AROUND.test(selector)) return line;
+      return `${pad}${HEADING_HOST} ${selector}${end}`;
+    })
+    .join("\n");
+  return { ...snippet, css };
+}
+
 /** The design with the position's rules added to its CSS. */
 export function withPosition(snippet: Snippet, position: Position | null): Snippet {
   return position ? { ...snippet, css: `${snippet.css}\n${positionCss(snippet, position)}` } : snippet;

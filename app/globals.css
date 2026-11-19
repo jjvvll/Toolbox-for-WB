@@ -69,6 +69,14 @@ body {
 .tiptap-content li + li {
   margin-top: 0.2em;
 }
+/* Highlighted keywords: the color comes from the highlighter; dark text keeps them readable in dark mode too. */
+.tiptap-content mark {
+  color: #18181b;
+  border-radius: 3px;
+  padding: 0 2px;
+  box-decoration-break: clone;
+  -webkit-box-decoration-break: clone;
+}
 /* Linked words stand out: blue, underlined, with a light tint. */
 .tiptap-content a {
   color: #1d4ed8;
