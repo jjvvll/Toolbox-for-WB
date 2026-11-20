@@ -67,6 +67,12 @@ export function collectSearchParts(doc: Document, visibleOnly: boolean, elMap: E
   for (let n = walker.nextNode(); n; n = walker.nextNode()) {
     const p = n.parentElement;
     if (!p || !n.nodeValue?.trim() || p.closest(skip)) continue;
+    // A ® / ™ in its own <sup> or <span> belongs to the word before it ("REALTOR<sup>®</sup>").
+    if (/^s*[®™©]s*$/.test(n.nodeValue) && p.parentElement && p !== body) {
+      const holder = p.parentElement;
+      byParent.set(holder, `${byParent.get(holder) ?? ""}${n.nodeValue.trim()}`);
+      continue;
+    }
     byParent.set(p, `${byParent.get(p) ?? ""} ${n.nodeValue}`);
   }
   byParent.forEach((t, p) => add("body text", t, p));

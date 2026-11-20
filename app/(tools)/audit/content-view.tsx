@@ -7,6 +7,7 @@ import { designCssParts, parseColorInput, rgbHex, type ColorPart, type Rgba } fr
 import type { Part } from "./lib/collect";
 import { compText, type Comp } from "./lib/labeler";
 import { GROUP_KEYS, spellKey, type AuditState, type AuditStore, type GroupKey, type SpellHit, type SpellLang } from "./lib/store";
+import { realtorIssues } from "./lib/realtor";
 import { CASE_LABEL, caseReasons, type CaseMode, type CasePart, type CaseReason, type Screen } from "./lib/text-case";
 import { DetailLoader } from "./links-view";
 import { CompLabel, Code, Loader, ReportButton, ResultCard, Snippet, Summary, Tag, badBadge, pagePath, plural, selectClass, smallButton, softBadge, useNow, warnBadge } from "./ui";
@@ -708,7 +709,8 @@ function loadIgnored(): Set<string> {
   }
 }
 
-type SpellItem = { where: string; text: string; path: string; comp: Comp | null; seo?: boolean; m: SpellHit; pages?: string[] };
+/** realtor: written in the wrong REALTOR® format (checked here, not by LanguageTool). */
+type SpellItem = { where: string; text: string; path: string; comp: Comp | null; seo?: boolean; m: SpellHit; pages?: string[]; realtor?: boolean };
 
 function SpellSnippet({ text, m }: { text: string; m: SpellHit }) {
   const a = Math.max(0, m.offset - 50);
@@ -756,12 +758,17 @@ export function SpellingView({ store, state, onJump }: JumpProps) {
     const unchecked = pieces.filter((p) => !state.spellCache.has(spellKey(lang, p.text))).length;
     const shared = new Map<string, SpellItem & { pages: string[] }>();
     const byPage = new Map<Row, SpellItem[]>();
+    let realtorCount = 0;
     for (const p of pieces) {
-      const ms = state.spellCache.get(spellKey(lang, p.text));
-      if (!ms) continue;
-      for (const m of ms) {
-        if (skipWord(m.word, p.text, m.offset)) continue;
-        const h: SpellItem = { where: p.where, text: p.text, path: p.path, comp: p.comp, seo: p.seo, m };
+      // REALTOR® format, checked here (no need to wait for LanguageTool), then spelling,
+      // leaving out a spelling hit on the same word.
+      const realtor = realtorIssues(p.text).filter((m) => !ignored.has(m.word.toLowerCase()));
+      const overlaps = (m: SpellHit) => realtor.some((r) => m.offset < r.offset + r.length && r.offset < m.offset + m.length);
+      const spelling = (state.spellCache.get(spellKey(lang, p.text)) ?? []).filter((m) => !overlaps(m) && !skipWord(m.word, p.text, m.offset));
+      realtorCount += realtor.length;
+      const hits = [...realtor.map((m) => ({ m, realtor: true })), ...spelling.map((m) => ({ m, realtor: false }))];
+      for (const { m, realtor: isRealtor } of hits) {
+        const h: SpellItem = { where: p.where, text: p.text, path: p.path, comp: p.comp, seo: p.seo, m, realtor: isRealtor };
         if (p.comp?.global) {
           const key = [p.comp.name, p.where, p.path, p.text, m.offset].join("\u0001");
           const s = shared.get(key) ?? { ...h, pages: [] };
@@ -774,13 +781,14 @@ export function SpellingView({ store, state, onJump }: JumpProps) {
         }
       }
     }
-    const line = (h: SpellItem) => `  - "${h.m.word}"${h.m.sugs.length ? ` → ${h.m.sugs.join(" / ")}` : ""}  (${compText(h.comp)}${h.where}${h.seo ? " [SEO]" : ""})`;
+    const line = (h: SpellItem) =>
+      `  - "${h.m.word}"${h.m.sugs.length ? ` → ${h.m.sugs.join(" / ")}` : ""}${h.realtor ? " [REALTOR® format]" : ""}  (${compText(h.comp)}${h.where}${h.seo ? " [SEO]" : ""})`;
     const sharedHits = [...shared.values()];
     const pages = [...byPage].map(([row, hits]) => ({ row, hits: hits.sort((a, b) => Number(!!b.seo) - Number(!!a.seo)) }));
     const all = [...sharedHits, ...pages.flatMap((p) => p.hits)];
     const words = new Set(all.map((h) => h.m.word.toLowerCase())).size;
     const report = [...(sharedHits.length ? ["Site-wide", ...sharedHits.map(line)] : []), ...pages.flatMap((p) => [`\n${p.row.label} (${p.row.url})`, ...p.hits.map(line)])];
-    return { pieces: pieces.length, unchecked, sharedHits, pages, total: all.length, words, report: report.length ? `Spelling (${lang})\n${report.join("\n")}` : "" };
+    return { pieces: pieces.length, unchecked, realtorCount, sharedHits, pages, total: all.length, words, report: report.length ? `Spelling (${lang})\n${report.join("\n")}` : "" };
     // The store's helpers read state.rows and state.groups, so results update when they change.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [store, state.spellCache, state.rows, state.groups, lang, ignored, skipNames]);
@@ -816,6 +824,11 @@ export function SpellingView({ store, state, onJump }: JumpProps) {
   const item = (h: SpellItem, i: number) => (
     <div key={i}>
       <CompLabel comp={h.comp} />
+      {h.realtor && (
+        <Tag className={badBadge} title="REALTOR® is a trademark: capitals, with ® right after it">
+          REALTOR® format
+        </Tag>
+      )}
       <span className="text-xs font-medium text-zinc-600 dark:text-zinc-400">{h.where}</span>
       {h.path && (
         <>
@@ -884,6 +897,7 @@ export function SpellingView({ store, state, onJump }: JumpProps) {
       )}
       <p className="text-xs text-zinc-500">
         Runs with every audit. The visible text and SEO titles/descriptions are sent to LanguageTool (free, spelling rules only), in batches that stay under its free limits.
+        REALTOR® is also checked here (no server needed): it must be in capitals with ® right after it, so “Realtor”, “REALTOR” without ®, “REALTOR ®” and “REALTOR®s” are flagged.
       </p>
       {job && (
         <Loader
@@ -908,6 +922,7 @@ export function SpellingView({ store, state, onJump }: JumpProps) {
           <>
             <b>{result.words}</b> possible {result.words === 1 ? "misspelling" : "misspellings"} in {plural(result.total, "place")}: {result.sharedHits.length} site-wide ·{" "}
             {plural(result.pages.length, "page")}
+            {result.realtorCount > 0 && <> · {plural(result.realtorCount, "REALTOR® format issue")}</>}
           </>
         ) : result.unchecked === result.pieces ? (
           job ? (

@@ -842,7 +842,7 @@ function ColorSlot({ slot, pool }: { slot: Slot; pool: PoolGroup[] }) {
             role="dialog"
             aria-label={`Choose ${slot.label} color`}
             style={{ position: "fixed", top: pos?.top ?? -9999, left: pos?.left ?? -9999, width: POPOVER_WIDTH }}
-            className="manga-menu z-[80] p-2 text-foreground"
+            className="manga-menu manga-dark z-[80] p-2 text-foreground"
           >
             <p className="mb-1.5 flex justify-between text-[11px] font-medium">
               {slot.label}
@@ -908,7 +908,7 @@ function CodePanel({ css, json }: { css: string; json: string }) {
         <CopyButton key={tab} text={code} label={tab === "css" ? "Copy CSS" : "Copy JSON"} className="ml-auto py-1.5 text-xs" />
       </div>
       <pre aria-label={tab === "css" ? "CSS variables" : "JSON"} tabIndex={0}
-        className="max-h-80 overflow-auto bg-white p-3 font-mono text-xs leading-relaxed text-zinc-800 dark:bg-zinc-950 dark:text-zinc-200">
+        className="max-h-80 overflow-auto bg-[var(--paper)] p-3 font-mono text-xs leading-relaxed text-zinc-800 dark:bg-zinc-950 dark:text-zinc-200">
         {/* One text flow with real newlines, so selecting and copying by hand gives exactly the code. */}
         {code.split("\n").map((line, i) => (
           <Fragment key={i}>

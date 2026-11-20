@@ -107,20 +107,14 @@ function useElementWidth<T extends HTMLElement>() {
   return [ref, width] as const;
 }
 
-const chip = (active: boolean) =>
-  `rounded-full border px-3 py-1 text-sm font-medium transition-colors ${
-    active
-      ? "border-blue-600 bg-blue-50 text-blue-700 dark:border-blue-500 dark:bg-blue-950/40 dark:text-blue-300"
-      : "border-zinc-300 text-zinc-600 hover:border-zinc-400 dark:border-zinc-700 dark:text-zinc-400 dark:hover:border-zinc-500"
-  }`;
+// A stamped manga button; the chosen one is red (see .manga-chip in globals.css, keyed on aria-pressed).
+const chip = (active: boolean) => `manga-chip${active ? " manga-chip-on" : ""}`;
 
 /** One level of the library's filters: a label, then its choices. */
 function FilterRow({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div role="group" aria-label={label} className="flex flex-wrap items-center gap-2">
-      <span className="w-16 shrink-0 text-xs font-medium tracking-wide text-zinc-500 uppercase">
-        {label}
-      </span>
+      <span className="manga-label w-24 shrink-0 text-center">{label}</span>
       {children}
     </div>
   );
@@ -212,7 +206,7 @@ export default function SectionsTool() {
 
   return (
     <div className="mt-8 flex flex-col gap-5">
-      <div className="flex flex-col gap-3 rounded-xl border border-zinc-200 p-4 dark:border-zinc-800">
+      <div className="glass-panel flex flex-col gap-3 p-4">
         <FilterRow label="Template">
           {SITE_TEMPLATES.map((t) => (
             <button
@@ -305,13 +299,14 @@ export default function SectionsTool() {
         )}
       </div>
 
-      <div className="flex flex-col gap-1 text-sm text-zinc-600 dark:text-zinc-400">
-        <h2 className="text-base font-medium text-foreground">
+      {/* A narration box, as in a manga: the current choice, then how the designs work. */}
+      <div className="manga-caption flex flex-col gap-1 text-sm text-zinc-600" data-label="解説">
+        <h2 className="text-lg text-foreground">
           {currentTemplate.label} <span className="text-zinc-400">/</span> {style.label}{" "}
           <span className="text-zinc-400">/</span> {currentKind.label}{" "}
           <span className="text-zinc-400">/</span>{" "}
           {byLength ? currentLength.label : currentAudience.label}{" "}
-          <span className="font-normal text-zinc-500">{items.length} designs</span>
+          <span className="manga-sticker ml-1 align-middle">{items.length} designs</span>
         </h2>
         <p>
           {style.hint} {currentKind.hint}
@@ -359,7 +354,7 @@ export default function SectionsTool() {
         </p>
       </div>
 
-      <ul className="grid grid-cols-1 items-start gap-5 lg:grid-cols-2">
+      <ul className="grid grid-cols-1 items-start gap-6 lg:grid-cols-2">
         {items.map((item, i) => (
           <Card
             key={item.key}
@@ -879,8 +874,8 @@ function Card({
   );
 
   return (
-    <li className="flex flex-col overflow-hidden rounded-xl border border-zinc-200 bg-background dark:border-zinc-800">
-      <div ref={ref} className="relative bg-zinc-100 dark:bg-zinc-900">
+    <li className="manga-panel flex flex-col overflow-hidden">
+      <div ref={ref} className="manga-tone relative bg-[var(--paper)]">
         {doc && width > 0 ? (
           <PreviewFrame doc={doc} viewport={VIEWPORTS.desktop} width={width} title={snippet.name} />
         ) : (
@@ -892,14 +887,16 @@ function Card({
           aria-label={`Open ${snippet.name}`}
           className="absolute inset-0 cursor-zoom-in focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-blue-500"
         />
+        {/* The panel number, in the corner like a manga panel's. */}
+        <span className="manga-panel-no" aria-hidden>
+          {String(index).padStart(2, "0")}
+        </span>
       </div>
-      <div className="flex flex-col gap-2.5 border-t border-zinc-200 p-3 dark:border-zinc-800">
+      <div className="flex flex-col gap-2.5 border-t-[3px] border-[var(--ink)] p-3">
         {/* The name and the copy buttons share a row; the copy buttons never split up. */}
         <div className="flex items-center gap-2">
-          <p className="mr-auto min-w-0 truncate text-sm font-medium" title={snippet.name}>
-            <span className="mr-2 font-normal tabular-nums text-zinc-400">
-              {String(index).padStart(2, "0")}
-            </span>
+          <p className="mr-auto min-w-0 truncate text-sm font-bold" title={snippet.name}>
+            <span className="sr-only">{index}. </span>
             {snippet.name}
           </p>
           <div className="flex shrink-0 gap-2">
