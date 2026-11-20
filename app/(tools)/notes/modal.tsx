@@ -30,7 +30,13 @@ export default function Modal({
     const dialog = ref.current;
     if (!dialog) return;
     dialog.showModal();
-    const handleClose = () => onCloseRef.current();
+    // The browser reports a close a moment later, not right away. In development React mounts,
+    // unmounts and remounts each component once: the unmount's close arrives after the remount
+    // has opened the dialog again, and would shut it the moment it appeared. A close only
+    // counts if the dialog really is closed.
+    const handleClose = () => {
+      if (!dialog.open) onCloseRef.current();
+    };
     dialog.addEventListener("close", handleClose);
     const stopDismiss = lightDismiss(dialog);
     return () => {

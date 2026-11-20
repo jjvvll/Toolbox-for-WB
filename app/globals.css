@@ -1,38 +1,497 @@
 @import "tailwindcss";
 
+/* ==========================================================================
+   Manga panel style.
+   Tokens first; the Tailwind palette is mapped onto them so every tool page
+   (which uses zinc for neutrals and blue for actions) picks the style up.
+   ========================================================================== */
+
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
-  /* Scrollbars, selects, checkboxes and other built-in controls follow light/dark mode too. */
-  color-scheme: light dark;
+  --paper: #fbf8f1; /* page ground */
+  --panel: #ffffff; /* card / panel fill */
+  --ink: #111111; /* text, borders, shadows */
+  --ink-soft: #3a3633; /* secondary text */
+  --red: #ec3013; /* primary action, emphasis */
+  --red-strong: #d8290d; /* red fills behind small white text (passes 4.5:1) */
+  --red-deep: #c41d0a; /* hover / pressed, red text at small sizes */
+  --yellow: #ffd60a; /* stickers, highlights, progress fill */
+  --border: 3px solid var(--ink);
+  --border-heavy: 4px solid var(--ink);
+  --shadow-hard: 4px 4px 0 var(--ink);
+  --font-display: var(--font-dela), "Arial Black", sans-serif;
+  --font-body: var(--font-zen), Arial, sans-serif;
+
+  --background: var(--panel);
+  --foreground: var(--ink);
+  color-scheme: light;
+}
+
+/* The manga style is a light design: `dark:` styles never apply. */
+@custom-variant dark (&:where(.manga-dark-never, .manga-dark-never *));
+
+@theme {
+  /* Neutrals: warm paper greys up to ink. */
+  --color-zinc-50: #faf7ef;
+  --color-zinc-100: #f2ede1;
+  --color-zinc-200: #e4ddcc;
+  --color-zinc-300: #cfc6b2;
+  --color-zinc-400: #8f877a;
+  --color-zinc-500: #6b645b;
+  --color-zinc-600: #4a4540;
+  --color-zinc-700: #3a3633;
+  --color-zinc-800: #262321;
+  --color-zinc-900: #171514;
+  --color-zinc-950: #0e0d0c;
+
+  /* The action color: red instead of blue. 600 is a shade deeper than --red so white
+     button labels stay readable. */
+  --color-blue-50: #fff1ee;
+  --color-blue-100: #ffdcd4;
+  --color-blue-200: #ffb8a8;
+  --color-blue-300: #ff8e78;
+  --color-blue-400: #f8603f;
+  --color-blue-500: #ec3013;
+  --color-blue-600: #d8290d; /* = --red-strong */
+  --color-blue-700: #c41d0a;
+  --color-blue-800: #9a1606;
+  --color-blue-900: #6e1004;
+  --color-blue-950: #420a02;
+
+  /* Danger buttons (bg-red-600) use the same manga red as actions. */
+  --color-red-600: #d8290d;
+  --color-red-700: #c41d0a;
+
+  /* Square corners everywhere (rounded-full stays round, for dots and spinners). */
+  --radius-xs: 0;
+  --radius-sm: 0;
+  --radius-md: 0;
+  --radius-lg: 0;
+  --radius-xl: 0;
+  --radius-2xl: 0;
+  --radius-3xl: 0;
+  --radius-4xl: 0;
+
+  /* Hard offset shadows, never blurred. */
+  --shadow-2xs: 1px 1px 0 var(--ink);
+  --shadow-xs: 2px 2px 0 var(--ink);
+  --shadow-sm: 3px 3px 0 var(--ink);
+  --shadow-md: 4px 4px 0 var(--ink);
+  --shadow-lg: 4px 4px 0 var(--ink);
+  --shadow-xl: 5px 5px 0 var(--ink);
+  --shadow-2xl: 6px 6px 0 var(--ink);
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
+  --font-sans: var(--font-body);
   --font-mono: var(--font-geist-mono);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
-}
+/* ---------- page basics ---------- */
 
 html {
-  background: var(--background);
+  background: var(--paper);
+}
+
+/* While a modal dialog is open the page behind it doesn't scroll: scrolling past the end of
+   the dialog's content would otherwise carry on into the page. The gutter keeps the page
+   from shifting sideways when its scrollbar goes away. */
+html:has(dialog:modal) {
+  overflow: hidden;
+  scrollbar-gutter: stable;
 }
 
 /* Transparent so the fixed background art (components/anime-scene.tsx) shows through. */
 body {
   background: transparent;
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  color: var(--ink);
+  font-family: var(--font-body);
 }
 
-/* Rich-text editor (Notes tool) */
+/* ---------- the page: a manga page, not plain white ----------
+   Three fixed layers above the background art (z -10) and below everything else, so panels
+   (opaque white) always sit on top and body text never has texture behind it. */
+
+/* Paper grain, everywhere: a faint fractal noise, like printed paper. */
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -5;
+  pointer-events: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 .07 0 0 0 0 .06 0 0 0 0 .05 0 0 0 .55 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='.22'/%3E%3C/svg%3E");
+}
+
+/* Screentone dots and speed lines bleeding in from the left corners, fading out before they
+   reach the middle (and the background art on the right). */
+body::after {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -4;
+  pointer-events: none;
+  background-image:
+    radial-gradient(rgb(17 17 17 / 0.24) 1.3px, transparent 1.6px),
+    repeating-conic-gradient(from 0deg at 0% 100%, rgb(17 17 17 / 0.09) 0deg 0.8deg, transparent 0.8deg 4deg);
+  background-size:
+    9px 9px,
+    auto;
+  -webkit-mask-image:
+    radial-gradient(ellipse 50% 42% at 0% 0%, #000 0%, rgb(0 0 0 / 0.35) 45%, transparent 75%),
+    radial-gradient(ellipse 58% 55% at 0% 100%, #000 0%, rgb(0 0 0 / 0.35) 45%, transparent 75%);
+  mask-image:
+    radial-gradient(ellipse 50% 42% at 0% 0%, #000 0%, rgb(0 0 0 / 0.35) 45%, transparent 75%),
+    radial-gradient(ellipse 58% 55% at 0% 100%, #000 0%, rgb(0 0 0 / 0.35) 45%, transparent 75%);
+}
+
+/* A big outlined sound effect in the corner, as drawn into a manga panel. Decorative only:
+   the empty alternative text (after the slash) keeps screen readers from reading it, and it
+   never catches clicks. */
+html::after {
+  content: "ドドド" / "";
+  position: fixed;
+  left: 1.5vw;
+  bottom: 1vh;
+  z-index: -3;
+  pointer-events: none;
+  font-family: var(--font-display);
+  font-size: clamp(72px, 11vw, 176px);
+  line-height: 1;
+  color: transparent;
+  -webkit-text-stroke: 2px rgb(17 17 17 / 0.13);
+  transform: rotate(-8deg);
+  transform-origin: left bottom;
+}
+
+@media print {
+  body::before,
+  body::after,
+  html::after {
+    display: none;
+  }
+}
+
+@layer base {
+  h1,
+  h2 {
+    font-family: var(--font-display);
+    font-weight: 400; /* Dela Gothic One has one weight; no faux bold */
+  }
+  ::selection {
+    background: var(--yellow);
+    color: var(--ink);
+  }
+}
+
+/* Every interactive element: a red focus outline (overrides the per-page blue rings). */
+:focus-visible {
+  outline: 3px solid var(--red) !important;
+  outline-offset: 2px !important;
+}
+
+/* Lines are ink: any zinc border or divider becomes black, like a manga panel's line art.
+   Colored borders (red errors, amber warnings…) keep their color. */
+[class*="border-zinc-"],
+[class*="divide-zinc-"] > * {
+  border-color: var(--ink);
+}
+
+/* ---------- buttons, everywhere ---------- */
+
+/* Primary (red) buttons: ink border, display font, hard shadow, pressed into the page. */
+:is(button, a, label).bg-blue-600,
+:is(button, a).bg-red-600 {
+  border: 2px solid var(--ink);
+  box-shadow: 3px 3px 0 var(--ink);
+  font-family: var(--font-display);
+  font-weight: 400;
+  letter-spacing: 0.02em;
+  transition:
+    transform 120ms,
+    box-shadow 120ms,
+    background-color 120ms;
+}
+:is(button, a, label).bg-blue-600:hover,
+:is(button, a).bg-red-600:hover {
+  background-color: var(--red-deep);
+}
+:is(button, a, label).bg-blue-600:active,
+:is(button, a).bg-red-600:active {
+  transform: translate(3px, 3px);
+  box-shadow: none;
+}
+
+/* Outlined (secondary) buttons: thicker ink border, yellow on hover. */
+button[class*="border-zinc-"]:not(:disabled):hover,
+a[class*="border-zinc-"]:hover {
+  background-color: var(--yellow);
+}
+button[class*="border-zinc-"],
+a[class*="border-zinc-"][class*="px-"] {
+  border-width: 2px;
+  transition:
+    transform 120ms,
+    background-color 120ms;
+}
+button[class*="border-zinc-"]:not(:disabled):active {
+  transform: translate(2px, 2px);
+}
+
+button:disabled {
+  box-shadow: none !important;
+}
+
+/* ---------- inputs ---------- */
+
+:is(input:not([type="checkbox"], [type="radio"], [type="range"], [type="color"], [type="file"]), textarea, select)[class*="border"] {
+  border-width: 2px;
+  border-color: var(--ink);
+  background-color: var(--panel);
+  box-shadow: none;
+}
+:is(input, textarea, select):focus {
+  --tw-ring-shadow: 0 0 #0000;
+}
+input[type="checkbox"],
+input[type="radio"],
+input[type="range"],
+progress {
+  accent-color: var(--red);
+}
+
+/* ---------- panels ---------- */
+
+/* Every panel (dashboard, tool page, side rails, menus) is a white manga panel. */
+.glass-panel {
+  background: var(--panel);
+  border: var(--border);
+  box-shadow: var(--shadow-hard);
+}
+
+/* ---------- manga pieces ---------- */
+
+/* Speed lines: hero only, never behind body text. */
+.manga-speed {
+  background-color: var(--panel);
+  background-image: repeating-conic-gradient(from 0deg at 100% 50%, rgb(17 17 17 / 0.13) 0deg 1.5deg, transparent 1.5deg 7deg);
+}
+/* Screentone dots. */
+.manga-tone {
+  background-image: radial-gradient(rgb(0 0 0 / 0.22) 1.4px, transparent 1.6px);
+  background-size: 8px 8px;
+}
+/* A small red Japanese sub-label. */
+.manga-jp {
+  font-family: var(--font-body);
+  font-weight: 900;
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  color: var(--red-deep);
+}
+/* A yellow sticker badge, slightly rotated. */
+.manga-sticker {
+  display: inline-block;
+  font-family: var(--font-display);
+  font-size: 11px;
+  line-height: 1.4;
+  padding: 0 6px;
+  background: var(--yellow);
+  color: var(--ink);
+  border: 2px solid var(--ink);
+  transform: rotate(4deg);
+}
+
+/* Modal dialogs: a heavy panel over a dotted dark backdrop. */
+dialog:modal {
+  border: var(--border-heavy) !important;
+  box-shadow: 6px 6px 0 var(--red) !important;
+}
+
+/* A window's title bar: ink, with the title in white display type (popups, the note window,
+   the highlights checklist). */
+.manga-titlebar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--ink);
+  color: #fff;
+  border-bottom: 3px solid var(--ink);
+}
+.manga-titlebar :is(h2, .manga-title) {
+  font-family: var(--font-display);
+  font-weight: 400;
+  letter-spacing: 0.02em;
+}
+/* Icon buttons on a title bar (close, minimize…): white, yellow on hover. */
+.manga-barbutton {
+  display: flex;
+  height: 28px;
+  min-width: 28px;
+  align-items: center;
+  justify-content: center;
+  padding: 0 6px;
+  color: #fff;
+  font-weight: 700;
+  transition: background-color 120ms, color 120ms;
+}
+.manga-barbutton:hover {
+  background: var(--yellow);
+  color: var(--ink);
+}
+/* A floating window that isn't a <dialog> (the note window, the checklist beside it). */
+.manga-window {
+  border: var(--border-heavy);
+  box-shadow: 6px 6px 0 var(--ink);
+  background: var(--panel);
+}
+/* Drop-down menus: an ink-bordered panel; items turn yellow under the pointer. */
+.manga-menu {
+  border: 3px solid var(--ink);
+  background: var(--panel);
+  box-shadow: var(--shadow-hard);
+}
+/* Only real menu items: a popover can also hold color swatches, which must keep their color. */
+.manga-menu [role="menuitem"]:hover {
+  background: var(--yellow);
+}
+/* Segmented tabs: ink frame, the selected tab filled ink. */
+.manga-tabs {
+  display: flex;
+  border: 2px solid var(--ink);
+  background: var(--panel);
+}
+.manga-tabs > button {
+  padding: 2px 10px;
+  font-weight: 700;
+  color: var(--ink);
+}
+.manga-tabs > button[aria-selected="true"] {
+  background: var(--ink);
+  color: #fff;
+}
+.manga-tabs > button:not([aria-selected="true"]):hover {
+  background: var(--yellow);
+}
+/* On an ink title bar: white frame and labels, the selected tab yellow. */
+.manga-titlebar .manga-tabs {
+  border-color: #fff;
+  background: transparent;
+}
+.manga-titlebar .manga-tabs > button {
+  color: #fff;
+}
+.manga-titlebar .manga-tabs > button[aria-selected="true"] {
+  background: var(--yellow);
+  color: var(--ink);
+}
+.manga-titlebar .manga-tabs > button:not([aria-selected="true"]):hover {
+  color: var(--ink);
+}
+dialog::backdrop {
+  background-color: rgb(17 17 17 / 0.6) !important;
+  background-image: radial-gradient(rgb(0 0 0 / 0.5) 1.4px, transparent 1.6px);
+  background-size: 8px 8px;
+  backdrop-filter: none !important;
+}
+
+/* Tables: an ink header row and 2px ink rules. */
+table thead th {
+  background: var(--ink);
+  color: #fff;
+  font-family: var(--font-display);
+  font-weight: 400;
+}
+table tbody tr {
+  border-bottom: 2px solid var(--ink);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    transition-duration: 0s !important;
+  }
+}
+
+/* ---------- dark manga panels ----------
+   For things you read for a long time (the open note and its highlights checklist): the
+   same manga look inverted, like a white-on-black panel. Cream ink lines on near-black,
+   red accents, yellow highlights. Everything inside follows, because the tokens and the
+   Tailwind palette are redefined for this part of the page only. */
+
+.manga-dark {
+  --paper: #141210;
+  --panel: #1c1a17;
+  --ink: #ece5d6; /* lines and text: warm cream, not pure white, to stay easy on the eyes */
+  --ink-soft: #bdb4a5;
+  --red-deep: #ff8466; /* red text on dark needs to be lighter to stay readable */
+  --background: var(--panel);
+  --foreground: var(--ink);
+  /* These are built from --ink, so they have to be rebuilt here too. */
+  --border: 3px solid var(--ink);
+  --border-heavy: 4px solid var(--ink);
+  --shadow-hard: 4px 4px 0 var(--red);
+
+  /* Neutrals, flipped: low numbers are now dark fills, high numbers light text. */
+  --color-zinc-50: #23201c;
+  --color-zinc-100: #2a2622;
+  --color-zinc-200: #38332e;
+  --color-zinc-300: #4d4741;
+  --color-zinc-400: #8f877b;
+  --color-zinc-500: #a69e91;
+  --color-zinc-600: #bdb5a8;
+  --color-zinc-700: #d2cbbe;
+  --color-zinc-800: #e2dbcf;
+  --color-zinc-900: #ece5d6;
+  --color-zinc-950: #f5efe3;
+  /* The action red: tints become dark, text shades become light. Button fills stay as they are. */
+  --color-blue-50: #351611;
+  --color-blue-100: #461b13;
+  --color-blue-200: #6b2618;
+  --color-blue-300: #ff9c84;
+  --color-blue-400: #ff8466;
+  --color-blue-700: #ff8466;
+
+  color-scheme: dark;
+  color: var(--ink);
+  scrollbar-color: #4d4741 transparent;
+}
+.manga-dark ::selection {
+  background: var(--yellow);
+  color: #111;
+}
+
+/* Its frame casts a red shadow (a cream one would glare). */
+.manga-dark.manga-window {
+  box-shadow: 6px 6px 0 var(--red);
+}
+
+/* The window's title bar: solid black with a red rule under it. */
+.manga-dark .manga-titlebar {
+  background: #0b0a09;
+  color: #fff;
+  border-bottom-color: var(--red);
+}
+
+/* Anything that turns yellow keeps black text (cream on yellow would be unreadable). */
+.manga-dark :is(button, a)[class*="border-zinc-"]:not(:disabled):hover,
+.manga-dark .manga-barbutton:hover,
+.manga-dark .manga-tabs > button:hover,
+.manga-dark .manga-tabs > button[aria-selected="true"],
+.manga-dark .manga-menu [role="menuitem"]:hover,
+.manga-dark [class*="bg-[var(--yellow)]"],
+.manga-dark .manga-sticker {
+  color: #111;
+}
+
+/* Code blocks in notes: a shade darker than the panel instead of the light-mode ink block. */
+.manga-dark .tiptap-content pre {
+  background: #0b0a09;
+  color: #ece5d6;
+  border: 2px solid var(--color-zinc-300);
+}
+
+/* ---------- rich-text editor (Notes tool) ---------- */
+
 .tiptap-content {
   line-height: 1.65;
   font-size: 0.95rem;
@@ -40,21 +499,25 @@ body {
 .tiptap-content > * + * {
   margin-top: 0.6em;
 }
+.tiptap-content h1,
+.tiptap-content h2 {
+  font-family: var(--font-body);
+}
 .tiptap-content h1 {
   font-size: 1.6em;
-  font-weight: 700;
+  font-weight: 900;
   line-height: 1.25;
   margin-top: 1em;
 }
 .tiptap-content h2 {
   font-size: 1.3em;
-  font-weight: 650;
+  font-weight: 700;
   line-height: 1.3;
   margin-top: 0.9em;
 }
 .tiptap-content h3 {
   font-size: 1.1em;
-  font-weight: 600;
+  font-weight: 700;
   margin-top: 0.8em;
 }
 .tiptap-content ul {
@@ -71,96 +534,68 @@ body {
 .tiptap-content li + li {
   margin-top: 0.2em;
 }
-/* Highlighted keywords: the color comes from the highlighter; dark text keeps them readable in dark mode too. */
+/* Highlighted keywords: the color comes from the highlighter; dark text keeps them readable. */
 .tiptap-content mark {
   color: #18181b;
-  border-radius: 3px;
   padding: 0 2px;
   box-decoration-break: clone;
   -webkit-box-decoration-break: clone;
 }
-/* Linked words stand out: blue, underlined, with a light tint. */
+/* Linked words stand out: red, underlined, with a light tint. */
 .tiptap-content a {
-  color: #1d4ed8;
-  font-weight: 500;
+  color: var(--red-deep);
+  font-weight: 700;
   text-decoration: underline;
-  text-decoration-color: rgb(37 99 235 / 0.5);
-  text-decoration-thickness: 1.5px;
+  text-decoration-color: rgb(196 29 10 / 0.5);
+  text-decoration-thickness: 2px;
   text-underline-offset: 3px;
-  background: rgb(37 99 235 / 0.08);
-  border-radius: 3px;
+  background: rgb(236 48 19 / 0.08);
   padding: 0 2px;
   cursor: pointer;
-  transition: background-color 0.15s, text-decoration-color 0.15s;
+  transition: background-color 0.12s, text-decoration-color 0.12s;
 }
 .tiptap-content a:hover {
-  background: rgb(37 99 235 / 0.16);
+  background: var(--yellow);
   text-decoration-color: currentColor;
 }
 .tiptap-content blockquote {
-  border-left: 3px solid #d4d4d8;
+  border-left: 4px solid var(--ink);
   padding-left: 1em;
-  color: #52525b;
+  color: var(--ink-soft);
 }
 .tiptap-content code {
   font-family: var(--font-geist-mono), ui-monospace, monospace;
   font-size: 0.85em;
-  background: rgb(0 0 0 / 0.06);
-  border-radius: 4px;
+  background: var(--color-zinc-100);
+  border: 1px solid var(--color-zinc-300);
   padding: 0.1em 0.35em;
 }
 .tiptap-content pre {
-  background: #18181b;
-  color: #f4f4f5;
-  border-radius: 8px;
+  background: var(--ink);
+  color: #f4f1ea;
   padding: 0.8em 1em;
   overflow-x: auto;
 }
 .tiptap-content pre code {
   background: none;
+  border: 0;
   padding: 0;
   color: inherit;
 }
 .tiptap-content hr {
   border: none;
-  border-top: 1px solid #e4e4e7;
+  border-top: 2px solid var(--ink);
   margin: 1.2em 0;
 }
 .tiptap-content p.is-editor-empty:first-child::before {
   content: attr(data-placeholder);
-  color: #a1a1aa;
+  color: var(--color-zinc-400);
   float: left;
   height: 0;
   pointer-events: none;
 }
 
-@media (prefers-color-scheme: dark) {
-  .tiptap-content a {
-    color: #93c5fd;
-    text-decoration-color: rgb(147 197 253 / 0.5);
-    background: rgb(96 165 250 / 0.12);
-  }
-  .tiptap-content a:hover {
-    background: rgb(96 165 250 / 0.22);
-  }
-  .tiptap-content blockquote {
-    border-left-color: #3f3f46;
-    color: #a1a1aa;
-  }
-  .tiptap-content code {
-    background: rgb(255 255 255 / 0.1);
-  }
-  .tiptap-content pre {
-    background: #09090b;
-    border: 1px solid #27272a;
-  }
-  .tiptap-content hr {
-    border-top-color: #27272a;
-  }
-  .tiptap-content p.is-editor-empty:first-child::before {
-    color: #52525b;
-  }
-}
+/* ---------- background art ---------- */
 
 /* Anime widget: new picture fades in over the previous one. */
 @keyframes anime-fade-in {
@@ -180,20 +615,13 @@ body {
   }
 }
 
-/* Site-wide background art */
-.glass-panel {
-  background: color-mix(in srgb, var(--background) 80%, transparent);
-  border: 1px solid color-mix(in srgb, var(--foreground) 10%, transparent);
-  -webkit-backdrop-filter: blur(18px) saturate(1.4);
-  backdrop-filter: blur(18px) saturate(1.4);
-}
 /* Strong on the left where content sits, lighter on the right so the art shows. */
 .anime-veil {
   background: linear-gradient(
     to right,
-    color-mix(in srgb, var(--background) 92%, transparent) 0%,
-    color-mix(in srgb, var(--background) 82%, transparent) 45%,
-    color-mix(in srgb, var(--background) var(--veil-right, 45%), transparent) 100%
+    color-mix(in srgb, var(--paper) 92%, transparent) 0%,
+    color-mix(in srgb, var(--paper) 72%, transparent) 38%,
+    color-mix(in srgb, var(--paper) var(--veil-right, 22%), transparent) 100%
   );
 }
 .anime-sharp {
@@ -204,6 +632,6 @@ body {
 }
 @media (max-width: 767px) {
   .anime-veil {
-    background: color-mix(in srgb, var(--background) 80%, transparent);
+    background: color-mix(in srgb, var(--paper) 86%, transparent);
   }
 }

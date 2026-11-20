@@ -26,11 +26,11 @@ const isActive = (pathname: string, href: string) => pathname === href || pathna
 
 function DashboardIcon() {
   return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4" aria-hidden>
-      <rect x="3" y="3" width="7" height="7" rx="1.5" />
-      <rect x="14" y="3" width="7" height="7" rx="1.5" />
-      <rect x="3" y="14" width="7" height="7" rx="1.5" />
-      <rect x="14" y="14" width="7" height="7" rx="1.5" />
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} className="h-4 w-4" aria-hidden>
+      <rect x="3" y="3" width="7" height="7" />
+      <rect x="14" y="3" width="7" height="7" />
+      <rect x="3" y="14" width="7" height="7" />
+      <rect x="14" y="14" width="7" height="7" />
     </svg>
   );
 }
@@ -38,18 +38,20 @@ function DashboardIcon() {
 function ErrorBadge({ tool, count }: { tool: Tool; count: number }) {
   if (tool.href !== "/error-log" || !count) return null;
   return (
-    <span className="ml-auto rounded-full bg-red-600 px-1.5 text-[11px] font-semibold text-white" title={`${count} new`}>
+    <span className="manga-sticker ml-auto" title={`${count} new`}>
       {count}
     </span>
   );
 }
 
+// Manga style: white labels on the ink nav; the current tool is a red block, slanted.
 const itemClass = (active: boolean) =>
-  `flex items-center gap-2 rounded-xl px-2.5 py-2 text-sm transition-colors ${
-    active
-      ? "bg-background font-medium text-foreground shadow-sm ring-1 ring-zinc-900/10 dark:bg-zinc-800 dark:ring-white/10"
-      : "text-zinc-600 hover:bg-zinc-900/5 hover:text-foreground dark:text-zinc-400 dark:hover:bg-white/10"
+  `flex items-center gap-2 px-2.5 py-2 text-sm font-bold transition-colors duration-[120ms] ${
+    active ? "-skew-x-10 bg-[var(--red-strong)] text-white [&>*]:skew-x-10" : "text-white/85 hover:bg-white/10 hover:text-[var(--yellow)]"
   }`;
+
+/** The ink panel the tool links sit on. */
+const navPanel = "border-[3px] border-[var(--ink)] bg-[var(--ink)] shadow-[4px_4px_0_var(--red)]";
 
 function ToolLink({
   tool,
@@ -75,7 +77,7 @@ function ToolLink({
       title={`${tool.name}: ${tool.description}`}
       className={`${itemClass(active)} ${wrap ? "" : "whitespace-nowrap"} ${compact ? "lg:px-2 lg:py-1.5 lg:text-[13px]" : ""}`}
     >
-      <span className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-md [&_svg]:h-4 [&_svg]:w-4 ${tool.accent}`}>{tool.icon}</span>
+      <span className="flex h-6 w-6 shrink-0 items-center justify-center [&_svg]:h-4 [&_svg]:w-4">{tool.icon}</span>
       <span className={wrap ? "min-w-0 leading-tight" : compact ? "lg:min-w-0 lg:truncate" : ""}>{tool.name}</span>
       <ErrorBadge tool={tool} count={errors} />
     </Link>
@@ -99,7 +101,7 @@ export default function ToolTabs() {
   return (
     // Phones and tablets: one pinned row that scrolls sideways. Laptops (lg): every tool at once,
     // website tools on the left half and media on the right, like the side rails.
-    <nav aria-label="Tools" className="glass-panel sticky top-2 z-30 rounded-2xl p-1.5 shadow-sm lg:static min-[1520px]:hidden">
+    <nav aria-label="Tools" className={`${navPanel} sticky top-2 z-30 p-1.5 lg:static min-[1520px]:hidden`}>
       <ul className="flex gap-1 overflow-x-auto [scrollbar-width:thin] lg:grid lg:grid-cols-[auto_1fr_1fr] lg:items-stretch lg:overflow-visible">
         <li className="shrink-0">
           <Link href="/" title="Dashboard" className={itemClass(false)}>
@@ -109,7 +111,7 @@ export default function ToolTabs() {
         </li>
         {TOOL_GROUPS.map((g) => (
           <li key={g.id} className="flex shrink-0 gap-1 lg:min-w-0">
-            <span aria-hidden className="my-2 w-px shrink-0 bg-zinc-300 dark:bg-zinc-700" />
+            <span aria-hidden className="my-1.5 w-[3px] shrink-0 bg-[var(--paper)]" />
             <ul className="flex gap-1 lg:grid lg:min-w-0 lg:flex-1 lg:grid-cols-3 lg:gap-0.5" aria-label={g.label}>
               {toolsIn(g.id).map((tool) => {
                 const active = isActive(pathname, tool.href);
@@ -134,7 +136,7 @@ function Rail({ side, group, withDashboard }: { side: "left" | "right"; group: (
   return (
     <nav
       aria-label={group.label}
-      className={`glass-panel fixed top-6 z-30 hidden max-h-[calc(100vh-3rem)] w-[clamp(10.5rem,calc((100vw-72rem)/2-2.5rem),15rem)] flex-col gap-1 overflow-y-auto rounded-2xl p-2 shadow-sm min-[1520px]:flex ${
+      className={`${navPanel} fixed top-6 z-30 hidden max-h-[calc(100vh-3rem)] w-[clamp(10.5rem,calc((100vw-72rem)/2-2.5rem),15rem)] flex-col gap-1 overflow-y-auto p-2 [scrollbar-color:var(--ink-soft)_transparent] min-[1520px]:flex ${
         side === "left" ? "left-4" : "right-4"
       }`}
     >
@@ -146,10 +148,13 @@ function Rail({ side, group, withDashboard }: { side: "left" | "right"; group: (
             </span>
             Dashboard
           </Link>
-          <span aria-hidden className="mx-2 my-1 h-px bg-zinc-200 dark:bg-zinc-800" />
+          <span aria-hidden className="mx-2 my-1 h-[3px] bg-[var(--paper)]" />
         </>
       )}
-      <span className="px-2.5 pb-1 pt-1.5 text-[11px] font-semibold uppercase tracking-wider text-zinc-500">{group.label}</span>
+      <span className="flex flex-col px-2.5 pb-1 pt-1.5">
+        <span className="font-[family-name:var(--font-display)] text-[12px] tracking-wide text-white">{group.label}</span>
+        <span className="manga-jp text-[var(--yellow)]">{group.jp}</span>
+      </span>
       <ul className="flex flex-col gap-0.5">
         {toolsIn(group.id).map((tool) => (
           <li key={tool.href}>

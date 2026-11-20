@@ -7,7 +7,7 @@ import { liveQuery } from "dexie";
 import { useSyncExternalStore } from "react";
 import type { PullResponse, PushBody } from "@/app/api/sync/route";
 import { LOG_CLEARED_KEY, LOG_EVENT, LOG_SYNCED_KEY, logError, readLog } from "@/lib/error-log";
-import { SYNCED_TABLES, db, syncKey, type SyncedTable } from "./db";
+import { SYNCED_TABLES, db, onRecordsChanged, syncKey, type SyncedRecord, type SyncedTable } from "./db";
 
 export type SyncStatus =
   /** Hasn't checked yet. */
@@ -55,19 +55,83 @@ export const useSyncState = () =>
 
 // ---------- what the database doesn't have yet ----------
 
-type Change = { table: SyncedTable; key: string; record: Record<string, unknown> & { id: string; updatedAt: number } };
+type Change = { table: SyncedTable; key: string; record: SyncedRecord & { updatedAt: number } };
 
+// The tracker: records that may differ from the database, as key → their updatedAt (-1 while
+// typing, before the browser has stored the change). Filled from the change feed as records
+// are saved, so finding what to send never means reading every note. A record whose version
+// the database already has (one that just came from there, say) is dropped by `reconcile`.
+const dirty = new Map<string, number>();
+/** Keys of deletes the database doesn't have yet (the tombstones table, kept in memory). */
+let tombstoneKeys = new Set<string>();
+
+const splitKey = (key: string) => {
+  const at = key.indexOf(":");
+  return { table: key.slice(0, at) as SyncedTable, id: key.slice(at + 1) };
+};
+
+function publishPending() {
+  const pending = new Set([...dirty.keys(), ...tombstoneKeys]);
+  const same = pending.size === state.pending.size && [...pending].every((k) => state.pending.has(k));
+  if (!same) set({ pending });
+}
+
+/** Drops tracked records the database already has at their current version. */
+async function reconcile() {
+  const keys = [...dirty].filter(([, rev]) => rev >= 0).map(([k]) => k);
+  if (keys.length) {
+    const marks = await db.synced.bulkGet(keys);
+    keys.forEach((k, i) => {
+      const rev = dirty.get(k);
+      if (rev !== undefined && rev >= 0 && marks[i]?.rev === rev) dirty.delete(k);
+    });
+  }
+  publishPending();
+}
+
+/** Finds unsent records once, when the page opens (changes made before a reload). Reads keys and dates only, not notes. */
+async function initialScan() {
+  const rev = new Map((await db.synced.toArray()).map((m) => [m.key, m.rev]));
+  const check = (table: SyncedTable, id: string, updatedAt: number | undefined) => {
+    const key = syncKey(table, id);
+    if (rev.get(key) !== (updatedAt ?? 0) && !dirty.has(key)) dirty.set(key, updatedAt ?? 0);
+  };
+  // Notes and templates: from the updatedAt index, without loading the records. Records
+  // older than that index (no updatedAt) aren't in it, so their ids are checked separately.
+  for (const table of ["notes", "templates"] as const) {
+    const seen = new Set<string>();
+    await db[table].orderBy("updatedAt").eachKey((updatedAt, cursor) => {
+      seen.add(String(cursor.primaryKey));
+      check(table, String(cursor.primaryKey), Number(updatedAt));
+    });
+    for (const id of await db[table].toCollection().primaryKeys()) if (!seen.has(String(id))) check(table, String(id), undefined);
+  }
+  // Folders are small.
+  for (const f of await db.folders.toArray()) check("folders", f.id, f.updatedAt);
+  tombstoneKeys = new Set((await db.tombstones.toCollection().primaryKeys()).map(String));
+}
+
+/** The tracked records to send, read from the database (only those). */
 async function localChanges() {
-  const [marks, tombstones, ...tables] = await Promise.all([db.synced.toArray(), db.tombstones.toArray(), ...SYNCED_TABLES.map((t) => db[t].toArray())]);
-  const rev = new Map(marks.map((m) => [m.key, m.rev]));
+  const tombstones = await db.tombstones.toArray();
+  tombstoneKeys = new Set(tombstones.map((t) => t.key));
+  const keys = [...dirty.keys()];
+  const marks = await db.synced.bulkGet(keys);
   const puts: Change[] = [];
-  SYNCED_TABLES.forEach((table, i) => {
-    for (const r of tables[i] as (Record<string, unknown> & { id: string; updatedAt?: number })[]) {
-      const key = syncKey(table, r.id);
+  for (const table of SYNCED_TABLES) {
+    const mine = keys.map((k, i) => ({ k, i, ...splitKey(k) })).filter((x) => x.table === table);
+    if (!mine.length) continue;
+    const records = (await db[table].bulkGet(mine.map((x) => x.id))) as (SyncedRecord | undefined)[];
+    mine.forEach((x, j) => {
+      const r = records[j];
+      if (!r) return void dirty.delete(x.k); // deleted since: its tombstone covers it
       const updatedAt = r.updatedAt ?? 0;
-      if (rev.get(key) !== updatedAt) puts.push({ table, key, record: { ...r, updatedAt } });
-    }
-  });
+      if (marks[x.i]?.rev === updatedAt) {
+        // Already there. A note still being typed in (-1) stays marked until its save lands.
+        if (dirty.get(x.k) !== -1) dirty.delete(x.k);
+      } else puts.push({ table, key: x.k, record: { ...r, updatedAt } });
+    });
+  }
   return { puts, tombstones };
 }
 
@@ -116,8 +180,12 @@ let failures = 0;
 /** The last problem written to the error log, so retries don't log the same thing again. */
 let lastLogged = "";
 
-/** Sends what the database doesn't have, soon (changes arriving together go in one request). */
-export function syncSoon(delay = 1200) {
+/**
+ * Sends what the database doesn't have, soon. Edits within a few seconds of each other go in
+ * one request, which keeps server calls (Vercel function invocations) down while typing;
+ * everything is already saved in the browser meanwhile.
+ */
+export function syncSoon(delay = 5000) {
   if (timer) clearTimeout(timer);
   timer = setTimeout(() => void push(), delay);
 }
@@ -128,6 +196,7 @@ export function syncSoon(delay = 1200) {
  */
 export function noteEdited(id: string) {
   const key = syncKey("notes", id);
+  dirty.set(key, -1);
   if (!state.pending.has(key)) set({ pending: new Set(state.pending).add(key) });
 }
 
@@ -166,6 +235,8 @@ async function push() {
     if (tombstones.length || cleared !== undefined) {
       await post({ deletes: tombstones.map((t) => ({ table: t.table, id: t.id, at: t.at })), clearLogBefore: cleared });
       await db.tombstones.bulkDelete(tombstones.map((t) => t.key));
+      for (const t of tombstones) tombstoneKeys.delete(t.key);
+      publishPending();
       try {
         if (cleared !== undefined && Number(localStorage.getItem(LOG_CLEARED_KEY)) === cleared) localStorage.removeItem(LOG_CLEARED_KEY);
       } catch {
@@ -179,6 +250,9 @@ async function push() {
       await post(body);
       // Marked saved at the version that was sent: an edit made meanwhile stays waiting.
       await db.synced.bulkPut(batch.map((c) => ({ key: c.key, rev: c.record.updatedAt })));
+      // Done, unless it was edited again meanwhile (then it waits for the next round).
+      for (const c of batch) if (dirty.get(c.key) === c.record.updatedAt) dirty.delete(c.key);
+      publishPending();
     }
     if (entries.length) {
       await post({ log: entries.map(({ key, tool, kind, message, detail, count, first, last }) => ({ key, tool, kind, message, detail, count, first, last })) });
@@ -193,6 +267,10 @@ async function push() {
     }
     failures = 0;
     lastLogged = "";
+    publishPending();
+    // Anything still tracked (changed again while sending) gets another round; a round with
+    // nothing new to send makes no server call.
+    if ([...dirty.values()].some((rev) => rev >= 0)) syncSoon(300);
     set({ status: "synced", message: "", lastSyncedAt: Date.now() });
   } catch (err) {
     failures++;
@@ -266,14 +344,26 @@ export function startSync() {
   if (started || typeof window === "undefined") return;
   started = true;
 
-  // Keep the list of waiting changes current, and send them shortly after each change.
-  liveQuery(localChanges).subscribe({
-    next: ({ puts, tombstones }) => {
-      set({ pending: new Set([...puts.map((p) => p.key), ...tombstones.map((t) => t.key)]) });
-      syncSoon();
+  // Track what changes as it's saved, and send it shortly after. (Before, every save read
+  // every note to find what changed.) The tombstones table is tiny, so it's simply watched.
+  onRecordsChanged((c) => {
+    if (c.remote) return; // the tab that made the change sends it
+    for (const [id, r] of c.puts) dirty.set(syncKey(c.table, id), r?.updatedAt ?? 0);
+    for (const id of c.deletes) dirty.delete(syncKey(c.table, id));
+    void reconcile().then(() => dirty.size && syncSoon());
+  });
+  liveQuery(() => db.tombstones.toCollection().primaryKeys()).subscribe({
+    next: (keys) => {
+      tombstoneKeys = new Set(keys.map(String));
+      publishPending();
+      if (keys.length) syncSoon();
     },
     error: () => {},
   });
+  void initialScan()
+    .then(reconcile)
+    .then(() => dirty.size > 0 && syncSoon(0))
+    .catch(() => {});
   refreshLogCount();
   window.addEventListener(LOG_EVENT, () => {
     refreshLogCount();

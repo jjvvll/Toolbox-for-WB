@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { memo, useRef, useState } from "react";
 import CopyMenu from "./copy-menu";
 import RfqaButton from "./rfqa-button";
 import RichEditor from "./rich-editor";
@@ -21,18 +21,19 @@ import {
   type Opportunity,
   type SectionKey,
 } from "./lib/db";
+import { useAllTags, useNoteSummary } from "./lib/note-index";
 import { relativeTime } from "./lib/search";
 import { noteEdited } from "./lib/sync";
 import { useAutosave } from "./lib/use-autosave";
 
-const fieldInput =
+export const fieldInput =
   "min-w-0 flex-1 rounded-lg border border-zinc-300 bg-background px-2.5 py-1.5 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 dark:border-zinc-700";
-const iconButton =
+export const iconButton =
   "flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-zinc-300 text-sm text-zinc-600 hover:bg-zinc-100 disabled:opacity-30 dark:border-zinc-700 dark:text-zinc-400 dark:hover:bg-zinc-900";
-const fieldLabel = "w-28 shrink-0 pt-1.5 text-sm font-medium text-zinc-700 dark:text-zinc-300";
+export const fieldLabel = "w-28 shrink-0 pt-1.5 text-sm font-medium text-zinc-700 dark:text-zinc-300";
 
-const isUrl = (s: string) => /^(https?:\/\/|www\.)\S+$/i.test(s.trim());
-const href = (s: string) => (/^www\./i.test(s.trim()) ? `https://${s.trim()}` : s.trim());
+export const isUrl = (s: string) => /^(https?:\/\/|www\.)\S+$/i.test(s.trim());
+export const href = (s: string) => (/^www\./i.test(s.trim()) ? `https://${s.trim()}` : s.trim());
 
 /** A labelled field for a link, with buttons to open and copy it. */
 export function LinkRow({ label, title, value, onChange, placeholder = "Paste a link" }: { label: string; title: string; value: string; onChange: (v: string) => void; placeholder?: string }) {
@@ -109,18 +110,43 @@ export function Section({ title, children }: { title: string; children: React.Re
   );
 }
 
-/** The whole note, in order: links, Main ticket, Opportunity, then each section. Saves as you type. */
-export default function NoteForm({
-  note,
-  folders,
-  allTags,
-  onDelete,
-}: {
-  note: Note;
-  folders: Folder[];
-  allTags: string[];
-  onDelete: () => void;
-}) {
+/** The folder picker, kept current from the note index (saving doesn't redraw the form for it). */
+function FolderSelect({ noteId, initial, folders }: { noteId: string; initial: string | null; folders: Folder[] }) {
+  const summary = useNoteSummary(noteId);
+  return (
+    <select
+      value={(summary ? summary.folderId : initial) ?? ""}
+      onChange={(e) => updateNote(noteId, { folderId: e.target.value || null })}
+      aria-label="Folder"
+      className="min-w-0 max-w-44 rounded-md border border-zinc-300 bg-background px-2 py-1 text-xs dark:border-zinc-700"
+    >
+      <option value="">No folder</option>
+      {folders.map((f) => (
+        <option key={f.id} value={f.id}>
+          {f.name}
+        </option>
+      ))}
+    </select>
+  );
+}
+
+function EditedAt({ noteId, initial }: { noteId: string; initial: number }) {
+  const summary = useNoteSummary(noteId);
+  return <span className="mr-auto text-xs text-zinc-400">Edited {relativeTime(summary?.updatedAt ?? initial)}</span>;
+}
+
+function NoteTags({ noteId, initial }: { noteId: string; initial: string[] }) {
+  const summary = useNoteSummary(noteId);
+  const allTags = useAllTags();
+  return <TagInput tags={summary?.tags ?? initial} suggestions={allTags} onChange={(tags) => updateNote(noteId, { tags })} />;
+}
+
+/**
+ * The whole note, in order: links, Main ticket, Opportunity, then each section. Saves as you type.
+ * Memoized: `note` is the note as it was when it opened, so the form only redraws for its own
+ * typing; the folder, tags and date update themselves.
+ */
+const NoteForm = memo(function NoteForm({ note, folders, onDelete }: { note: Note; folders: Folder[]; onDelete: () => void }) {
   const [title, setTitle] = useState(note.title);
   const [links, setLinks] = useState<Partial<Record<LinkKey, string>>>(note.links ?? {});
   const [opportunity, setOpportunity] = useState<Opportunity>({ ...EMPTY_OPPORTUNITY, ...note.opportunity });
@@ -137,12 +163,13 @@ export default function NoteForm({
     sectionLinks: note.sectionLinks ?? {},
     design: { ...EMPTY_DESIGN, ...note.design },
   });
-  const { queue } = useAutosave<Note>((patch) => updateNote(note.id, patch));
+  // The search text (every field as plain text) is rebuilt once per save, not on every keystroke.
+  const { queue } = useAutosave<Note>((patch) => updateNote(note.id, { ...patch, text: noteSearchText(latest.current) }));
 
   const save = (patch: Partial<Note>) => {
     noteEdited(note.id);
     Object.assign(latest.current, patch);
-    queue({ ...patch, text: noteSearchText(latest.current) });
+    queue(patch);
   };
   const setLink = (key: LinkKey, value: string) => {
     const next = { ...latest.current.links, [key]: value };
@@ -183,20 +210,8 @@ export default function NoteForm({
           className="w-full bg-transparent text-xl font-semibold tracking-tight outline-none placeholder:text-zinc-300 dark:placeholder:text-zinc-700"
         />
         <div className="flex flex-wrap items-center gap-2">
-          <select
-            value={note.folderId ?? ""}
-            onChange={(e) => updateNote(note.id, { folderId: e.target.value || null })}
-            aria-label="Folder"
-            className="min-w-0 max-w-44 rounded-md border border-zinc-300 bg-background px-2 py-1 text-xs dark:border-zinc-700"
-          >
-            <option value="">No folder</option>
-            {folders.map((f) => (
-              <option key={f.id} value={f.id}>
-                {f.name}
-              </option>
-            ))}
-          </select>
-          <span className="mr-auto text-xs text-zinc-400">Edited {relativeTime(note.updatedAt)}</span>
+          <FolderSelect noteId={note.id} initial={note.folderId} folders={folders} />
+          <EditedAt noteId={note.id} initial={note.updatedAt} />
           <RfqaButton getNote={() => latest.current} />
           <CopyMenu getNote={() => ({ title: latest.current.title, content: noteFullHtml(latest.current) })} />
           <button
@@ -207,7 +222,7 @@ export default function NoteForm({
             Delete
           </button>
         </div>
-        <TagInput tags={note.tags} suggestions={allTags} onChange={(tags) => updateNote(note.id, { tags })} />
+        <NoteTags noteId={note.id} initial={note.tags} />
       </div>
 
       {/* Links */}
@@ -254,4 +269,5 @@ export default function NoteForm({
       </p>
     </div>
   );
-}
+});
+export default NoteForm;

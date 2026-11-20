@@ -842,7 +842,7 @@ function ColorSlot({ slot, pool }: { slot: Slot; pool: PoolGroup[] }) {
             role="dialog"
             aria-label={`Choose ${slot.label} color`}
             style={{ position: "fixed", top: pos?.top ?? -9999, left: pos?.left ?? -9999, width: POPOVER_WIDTH }}
-            className="z-[80] rounded-xl border border-zinc-200 bg-background p-2 text-foreground shadow-2xl dark:border-zinc-800"
+            className="manga-menu z-[80] p-2 text-foreground"
           >
             <p className="mb-1.5 flex justify-between text-[11px] font-medium">
               {slot.label}

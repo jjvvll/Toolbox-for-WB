@@ -2,7 +2,8 @@
 
 import { useState } from "react";
 import Modal from "./modal";
-import type { Folder, Note } from "./lib/db";
+import type { Folder } from "./lib/db";
+import type { NoteSummary } from "./lib/note-index";
 import { displayTitle, noteMatcher, relativeTime, snippet } from "./lib/search";
 
 export default function QuickSearch({
@@ -11,7 +12,7 @@ export default function QuickSearch({
   onSelect,
   onClose,
 }: {
-  notes: Note[];
+  notes: NoteSummary[];
   folders: Folder[];
   onSelect: (id: string) => void;
   onClose: () => void;
@@ -53,9 +54,9 @@ export default function QuickSearch({
         }}
         placeholder="Search notes by title, text, or #tag…"
         aria-label="Search notes"
-        className="w-full border-b border-zinc-200 bg-transparent px-4 py-3.5 text-base outline-none dark:border-zinc-800"
+        className="w-full border-b-[3px] border-[var(--ink)] bg-transparent px-4 py-3.5 text-base font-bold outline-none"
       />
-      <ul className="overflow-y-auto p-1.5" role="listbox">
+      <ul className="overflow-y-auto overscroll-contain p-1.5" role="listbox">
         {results.length === 0 && (
           <li className="px-3 py-6 text-center text-sm text-zinc-500">No matching notes.</li>
         )}
@@ -65,12 +66,12 @@ export default function QuickSearch({
               type="button"
               onMouseEnter={() => setActive(i)}
               onClick={() => choose(i)}
-              className={`flex w-full flex-col gap-0.5 rounded-lg px-3 py-2 text-left ${
-                i === current ? "bg-zinc-100 dark:bg-zinc-800" : ""
+              className={`flex w-full flex-col gap-0.5 border-2 px-3 py-2 text-left ${
+                i === current ? "border-[var(--ink)] bg-[var(--yellow)]" : "border-transparent"
               }`}
             >
               <span className="flex items-center justify-between gap-3">
-                <span className="truncate text-sm font-medium">{displayTitle(note)}</span>
+                <span className="truncate font-[family-name:var(--font-display)] text-sm">{displayTitle(note)}</span>
                 <span className="shrink-0 text-xs text-zinc-500">
                   {folderName(note.folderId) && `${folderName(note.folderId)} · `}
                   {relativeTime(note.updatedAt)}
@@ -83,7 +84,7 @@ export default function QuickSearch({
           </li>
         ))}
       </ul>
-      <p className="border-t border-zinc-200 px-4 py-2 text-xs text-zinc-500 dark:border-zinc-800">
+      <p className="border-t-[3px] border-[var(--ink)] bg-[var(--ink)] px-4 py-2 text-xs font-bold text-white">
         ↑↓ to move · Enter to open · Esc to close
       </p>
     </Modal>

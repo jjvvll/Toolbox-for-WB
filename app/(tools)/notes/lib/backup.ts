@@ -1,5 +1,5 @@
 import { htmlToPlainText } from "./convert";
-import { LINK_FIELDS, NOTE_SECTIONS, db, type Folder, type Note, type Template } from "./db";
+import { COMPLIANCE_PARTS, LINK_FIELDS, NOTE_SECTIONS, db, type CompliancePart, type Folder, type Note, type Template } from "./db";
 
 const FORMAT = "toolbox-notes";
 
@@ -33,6 +33,25 @@ export async function exportBackup(): Promise<void> {
 const isObj = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null;
 const str = (v: unknown, fallback = "") => (typeof v === "string" ? v : fallback);
 const num = (v: unknown, fallback: number) => (typeof v === "number" && isFinite(v) ? v : fallback);
+
+/** The compliance page: its three parts, or the first version's single text (kept as is; `complianceOf` reads both). */
+function asCompliance(v: unknown): Note["compliance"] {
+  if (typeof v === "string") return v || undefined;
+  if (!isObj(v)) return undefined;
+  const parts = COMPLIANCE_PARTS.flatMap((p) => {
+    const part = v[p.key];
+    if (!isObj(part)) return [];
+    // Entries (name + link each); older backups have one link and maybe titles, which
+    // complianceEntries converts when the note is opened.
+    const entries = Array.isArray(part.entries) ? part.entries.filter(isObj).map((e) => ({ title: str(e.title), link: str(e.link) })) : undefined;
+    const titles = Array.isArray(part.titles) ? part.titles.filter((t): t is string => typeof t === "string") : undefined;
+    const cleaned: CompliancePart = entries
+      ? { entries, notes: str(part.notes) }
+      : { ...(titles?.length ? { titles } : {}), link: str(part.link), notes: str(part.notes) };
+    return [[p.key, cleaned]];
+  });
+  return parts.length ? Object.fromEntries(parts) : undefined;
+}
 
 /** Validates a backup file and returns cleaned records, or throws with a readable message. */
 export function parseBackup(json: string) {
@@ -86,6 +105,7 @@ export function parseBackup(json: string) {
           : undefined,
         sections,
         opportunities,
+        compliance: asCompliance(n.compliance),
         text: str(n.text) || htmlToPlainText(content),
         folderId,
         tags: Array.isArray(n.tags) ? n.tags.filter((t): t is string => typeof t === "string") : [],

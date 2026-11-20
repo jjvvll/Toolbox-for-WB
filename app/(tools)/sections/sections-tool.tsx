@@ -1045,8 +1045,8 @@ function Detail({
 
   return (
     <Modal onClose={onClose} label={snippet.name} className="max-w-7xl">
-      <div className="flex flex-wrap items-center gap-2 border-b border-zinc-200 px-4 py-3 dark:border-zinc-800">
-        <h2 className="mr-auto font-medium">{snippet.name}</h2>
+      <div className="flex flex-wrap items-center gap-2 border-b-[3px] border-[var(--ink)] bg-[var(--paper)] px-4 py-3">
+        <h2 className="mr-auto">{snippet.name}</h2>
         {position !== undefined && (
           <div className="mr-2 flex items-center gap-2">
             <span className="text-xs text-zinc-500">Position: {positionText(position)}</span>
@@ -1070,7 +1070,7 @@ function Detail({
           type="button"
           onClick={onClose}
           aria-label="Close"
-          className="ml-1 rounded-md px-2 py-1 text-zinc-500 hover:bg-zinc-100 hover:text-foreground dark:hover:bg-zinc-900"
+          className="ml-1 border-2 border-[var(--ink)] bg-[var(--ink)] px-2 py-0.5 font-bold text-white hover:bg-[var(--yellow)] hover:text-[var(--ink)]"
         >
           ✕
         </button>

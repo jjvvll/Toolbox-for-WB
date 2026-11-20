@@ -487,8 +487,9 @@ function VideoGrid({ videos, vertical = false }: { videos: ChannelVideo[]; verti
               )}
             </div>
             <div className="mt-auto flex flex-wrap gap-2">
-              <CopyButton text={watchUrl(v.id)} label="Link" />
+              {/* The order they're used in: title, autoplay link with sound, thumbnail, then the rest (muted last). */}
               <CopyButton text={v.title} label="Title" />
+              <CopyButton text={autoplayUrl(v.id, false)} label="Autoplay (sound)" />
               <a
                 href={thumbnailDownloadUrl(v.id, v.title)}
                 download
@@ -496,9 +497,9 @@ function VideoGrid({ videos, vertical = false }: { videos: ChannelVideo[]; verti
               >
                 Thumbnail
               </a>
+              <CopyButton text={watchUrl(v.id)} label="Link" />
               {v.description && <CopyButton text={v.description} label="Description" />}
               <CopyButton text={autoplayUrl(v.id, true)} label="Autoplay (muted)" />
-              <CopyButton text={autoplayUrl(v.id, false)} label="Autoplay (sound)" />
             </div>
           </div>
         </li>

@@ -79,7 +79,7 @@ export default function RfqaButton({
         type="button"
         onClick={() => void open()}
         title="Generate the RFQA hand-off notes"
-        className={`rounded-md border border-zinc-300 font-medium hover:bg-zinc-100 dark:border-zinc-700 dark:hover:bg-zinc-900 ${
+        className={`border-2 border-zinc-900 bg-[var(--panel)] font-bold text-[var(--ink)] ${
           compact ? "px-2 py-1 text-xs" : "px-3 py-1.5 text-sm"
         }`}
       >
@@ -87,9 +87,9 @@ export default function RfqaButton({
       </button>
       {shown && (
         <Modal onClose={close} label="RFQA notes" className="max-w-xl">
-          <div className="flex items-center gap-2 border-b border-zinc-200 px-4 py-3 dark:border-zinc-800">
-            <h2 className="flex-1 font-semibold">RFQA notes</h2>
-            <button type="button" onClick={close} aria-label="Close" className="rounded-md px-2 py-1 text-zinc-500 hover:bg-zinc-100 dark:hover:bg-zinc-900">
+          <div className="manga-titlebar px-4 py-2.5">
+            <h2 className="flex-1">RFQA notes</h2>
+            <button type="button" onClick={close} aria-label="Close" className="manga-barbutton">
               ✕
             </button>
           </div>
@@ -98,9 +98,9 @@ export default function RfqaButton({
               <span className="mr-2 inline-block animate-spin">↻</span>Reading the side menu on the Front End page…
             </p>
           ) : (
-          <div className="flex min-h-0 flex-col gap-3 overflow-y-auto p-4">
+          <div className="flex min-h-0 flex-col gap-3 overflow-y-auto overscroll-contain p-4">
             {warnings.length > 0 && (
-              <ul className="list-disc rounded-lg bg-amber-50 py-2 pl-7 pr-3 text-xs text-amber-800 dark:bg-amber-950/30 dark:text-amber-300">
+              <ul className="list-disc border-2 border-[var(--ink)] bg-[#fff6c2] py-2 pl-7 pr-3 text-xs font-bold text-[var(--ink)]">
                 {warnings.map((w) => (
                   <li key={w}>{w}</li>
                 ))}
@@ -110,17 +110,17 @@ export default function RfqaButton({
               value={text}
               onChange={(e) => setText(e.target.value)}
               rows={Math.min(24, text.split("\n").length + 1)}
-              className="w-full rounded-lg border border-zinc-300 bg-background p-3 font-mono text-sm dark:border-zinc-700"
+              className="w-full border-2 border-zinc-900 bg-background p-3 font-mono text-sm"
               aria-label="RFQA notes"
             />
             <div className="flex flex-wrap items-center gap-2">
               <span className="mr-auto text-xs text-zinc-500">{copied}</span>
               {edited && (
-                <button type="button" onClick={() => setText(rfqaText(parts))} className="rounded-md border border-zinc-300 px-3 py-1.5 text-sm dark:border-zinc-700">
+                <button type="button" onClick={() => setText(rfqaText(parts))} className="border-2 border-zinc-900 bg-[var(--panel)] px-3 py-1.5 text-sm font-bold">
                   Reset
                 </button>
               )}
-              <button type="button" onClick={() => copy(false)} className="rounded-md border border-zinc-300 px-3 py-1.5 text-sm dark:border-zinc-700">
+              <button type="button" onClick={() => copy(false)} className="border-2 border-zinc-900 bg-[var(--panel)] px-3 py-1.5 text-sm font-bold">
                 Copy plain text
               </button>
               <button
@@ -128,7 +128,7 @@ export default function RfqaButton({
                 onClick={() => copy(true)}
                 disabled={edited}
                 title={edited ? "Edited: copy as plain text instead" : "“Front End” and “Client Folder” paste as links"}
-                className="rounded-md bg-blue-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
+                className="bg-blue-600 px-3 py-1.5 text-sm text-white hover:bg-blue-700 disabled:opacity-45"
               >
                 Copy with links
               </button>

@@ -4,12 +4,13 @@
 
 /** Shared look of every modal dialog. Tailwind's reset removes the browser's centering margin, hence m-auto. */
 export const dialogClass =
-  "m-auto rounded-2xl border border-zinc-200 bg-background p-0 text-foreground shadow-2xl dark:border-zinc-800 " +
+  // Manga style: the heavy ink border, red hard shadow and dotted backdrop come from globals.css (dialog:modal).
+  "m-auto border-4 border-[var(--ink)] bg-background p-0 text-foreground " +
   // Scrolling over the backdrop or inside the dialog must not scroll the page behind it.
-  "overscroll-contain backdrop:overflow-hidden backdrop:overscroll-contain backdrop:bg-black/40 backdrop:backdrop-blur-[2px]";
+  "overscroll-contain backdrop:overflow-hidden backdrop:overscroll-contain";
 
-const buttonClass = "rounded-lg px-3 py-1.5 text-sm font-medium";
-const cancelClass = `${buttonClass} border border-zinc-300 hover:bg-zinc-100 dark:border-zinc-700 dark:hover:bg-zinc-900`;
+const buttonClass = "px-3 py-1.5 text-sm";
+const cancelClass = `${buttonClass} border-2 border-zinc-900 font-bold`;
 const okClass = `${buttonClass} bg-blue-600 text-white hover:bg-blue-700`;
 const dangerClass = `${buttonClass} bg-red-600 text-white hover:bg-red-700`;
 
@@ -54,7 +55,7 @@ function openDialog(build: (form: HTMLFormElement, titleId: string) => { ok: HTM
 
     const form = el("form", "flex flex-col gap-3 p-5");
     form.method = "dialog";
-    const heading = el("h2", "text-base font-semibold", title);
+    const heading = el("h2", "text-lg", title);
     heading.id = titleId;
     form.append(heading);
     const { ok, focus, focusCancel } = build(form, titleId);

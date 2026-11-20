@@ -6,14 +6,14 @@ const normalize = (s: string) => s.normalize("NFD").replace(/\p{M}/gu, "").toLow
 export function noteMatcher(query: string) {
   const words = normalize(query).split(/\s+/).filter(Boolean);
   if (!words.length) return null;
-  return (note: Note) => {
+  return (note: Pick<Note, "title" | "text" | "tags">) => {
     const haystack = normalize(`${note.title}\n${note.text}\n${note.tags.map((t) => `#${t}`).join(" ")}`);
     return words.every((w) => haystack.includes(w.replace(/^#/, "")));
   };
 }
 
 /** A short excerpt of the body, centred on the first query word when there is one. */
-export function snippet(note: Note, query = "", length = 120): string {
+export function snippet(note: Pick<Note, "text">, query = "", length = 120): string {
   const text = note.text.replace(/\s+/g, " ").trim();
   const first = normalize(query).split(/\s+/).find(Boolean);
   const at = first ? normalize(text).indexOf(first) : -1;

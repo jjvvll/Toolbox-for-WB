@@ -5,7 +5,7 @@ import { EditorContent, useEditor, useEditorState, type Editor } from "@tiptap/r
 import StarterKit from "@tiptap/starter-kit";
 import Highlight from "@tiptap/extension-highlight";
 import { Placeholder } from "@tiptap/extensions";
-import { useEffect, useRef } from "react";
+import { memo, useEffect, useRef } from "react";
 import { useRegisterEditor } from "./editor-registry";
 
 export type EditorChange = { html: string; text: string };
@@ -19,17 +19,7 @@ function pastedUrl(text: string | undefined): string | null {
   return null;
 }
 
-/** Uncontrolled: `content` is read on mount only, so remount (via `key`) to load another note. */
-export default function RichEditor({
-  content,
-  onChange,
-  placeholder = "Start writing…",
-  autoFocus = false,
-  minHeight = "min-h-[50vh]",
-  compact = false,
-  fieldId,
-  fieldLabel,
-}: {
+type RichEditorProps = {
   content: string;
   onChange: (change: EditorChange) => void;
   placeholder?: string;
@@ -40,7 +30,36 @@ export default function RichEditor({
   /** Registers the editor for the highlights checklist, under this id and label. */
   fieldId?: string;
   fieldLabel?: string;
-}) {
+};
+
+/**
+ * Uncontrolled: `content` is read on mount only, so remount (via `key`) to load another note.
+ * Memoized: saving a note re-renders the form around it, and redrawing a dozen editors on
+ * every save made typing choppy. It only re-renders when its look changes, so `onChange`
+ * must not depend on values that change (read them from a ref, as the note form does).
+ */
+const RichEditor = memo(
+  RichEditorInner,
+  (a, b) =>
+    a.fieldId === b.fieldId &&
+    a.fieldLabel === b.fieldLabel &&
+    a.placeholder === b.placeholder &&
+    a.minHeight === b.minHeight &&
+    a.compact === b.compact &&
+    a.autoFocus === b.autoFocus,
+);
+export default RichEditor;
+
+function RichEditorInner({
+  content,
+  onChange,
+  placeholder = "Start writing…",
+  autoFocus = false,
+  minHeight = "min-h-[50vh]",
+  compact = false,
+  fieldId,
+  fieldLabel,
+}: RichEditorProps) {
   const editorRef = useRef<Editor | null>(null);
   const editor = useEditor({
     immediatelyRender: false,

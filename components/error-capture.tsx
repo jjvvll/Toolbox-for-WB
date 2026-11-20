@@ -28,6 +28,9 @@ const stackOf = (v: unknown) => (v instanceof Error && v.stack) || "";
 // Statuses the tools expect and handle themselves: bad input, not signed in, rate limits.
 const QUIET_STATUS = new Set([400, 401, 404, 429]);
 
+/** An info or warning line from a native library's log (glog format: level letter, date, time, thread, file:line]). */
+const NATIVE_LOG_LINE = /^[IW]\d{4} \d{2}:\d{2}:\d{2}\.\d+\s+\d+ [\w.-]+:\d+\]/;
+
 /**
  * Catches failures anywhere in the app and adds them to the error log: script
  * errors, unhandled promise failures, console errors and warnings, blocked
@@ -64,6 +67,9 @@ export default function ErrorCapture() {
     };
     console.warn = (...args: unknown[]) => {
       originals.warn.apply(console, args);
+      // Status lines from compiled native libraries (MediaPipe in Headshot Maker), in their
+      // "W1120 06:22:10.611000 2195520 gl_context.cc:1135] …" format: informational, not errors.
+      if (typeof args[0] === "string" && NATIVE_LOG_LINE.test(args[0])) return;
       add("Console warning", args.map(describe).join(" "), args.map(stackOf).filter(Boolean).join("\n"));
     };
 

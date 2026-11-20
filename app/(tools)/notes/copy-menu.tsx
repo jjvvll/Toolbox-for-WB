@@ -10,7 +10,7 @@ export default function CopyMenu({
   compact = false,
 }: {
   /** Called at copy time so the editor can hand over unsaved changes too. */
-  getNote: () => Pick<Note, "title" | "content">;
+  getNote: () => Pick<Note, "title" | "content"> | Promise<Pick<Note, "title" | "content"> | undefined>;
   compact?: boolean;
 }) {
   const [open, setOpen] = useState(false);
@@ -40,7 +40,8 @@ export default function CopyMenu({
 
   async function copy(kind: "Markdown" | "plain text") {
     setOpen(false);
-    const note = getNote();
+    const note = await getNote();
+    if (!note) return setCopied("Copy failed");
     const text = kind === "Markdown" ? noteToMarkdown(note) : noteToPlainText(note);
     try {
       await navigator.clipboard.writeText(text);
@@ -57,16 +58,16 @@ export default function CopyMenu({
         aria-haspopup="menu"
         aria-expanded={open}
         onClick={() => setOpen((o) => !o)}
-        className={`rounded-md border border-zinc-300 font-medium hover:bg-zinc-100 dark:border-zinc-700 dark:hover:bg-zinc-900 ${
+        className={`border-2 border-zinc-900 bg-[var(--panel)] font-bold text-[var(--ink)] ${
           compact ? "px-2 py-1 text-xs" : "px-3 py-1.5 text-sm"
-        } ${copied ? "border-emerald-500 text-emerald-700 dark:text-emerald-400" : ""}`}
+        } ${copied ? "!bg-[var(--yellow)]" : ""}`}
       >
         {copied ?? "Copy ▾"}
       </button>
       {open && (
         <div
           role="menu"
-          className="absolute right-0 z-20 mt-1 w-48 overflow-hidden rounded-lg border border-zinc-200 bg-background py-1 shadow-lg dark:border-zinc-800"
+          className="manga-menu absolute right-0 z-20 mt-1 w-48 overflow-hidden py-1"
         >
           {(["Markdown", "plain text"] as const).map((kind) => (
             <button
@@ -74,7 +75,7 @@ export default function CopyMenu({
               type="button"
               role="menuitem"
               onClick={() => copy(kind)}
-              className="block w-full px-3 py-2 text-left text-sm hover:bg-zinc-100 dark:hover:bg-zinc-900"
+              className="block w-full px-3 py-2 text-left text-sm font-bold"
             >
               Copy as {kind}
             </button>

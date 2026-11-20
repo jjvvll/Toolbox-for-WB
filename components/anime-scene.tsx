@@ -17,9 +17,9 @@ const INTERVALS = [
 ];
 /** How much of the art shows through the veil on the right-hand side. */
 const STRENGTHS = {
-  subtle: { label: "Subtle", veil: 72, sharp: 0.55 },
-  balanced: { label: "Balanced", veil: 45, sharp: 0.85 },
-  bold: { label: "Bold", veil: 15, sharp: 1 },
+  subtle: { label: "Subtle", veil: 50, sharp: 0.7 },
+  balanced: { label: "Balanced", veil: 22, sharp: 0.95 },
+  bold: { label: "Bold", veil: 5, sharp: 1 },
 } as const;
 type Strength = keyof typeof STRENGTHS;
 
@@ -472,7 +472,8 @@ function Backdrop({
   );
 
   return (
-    <div aria-hidden className="pointer-events-none fixed inset-0 -z-10 overflow-hidden bg-background">
+    // Paper, not white: the manga page texture (globals.css, body::before) sits on top of this.
+    <div aria-hidden className="pointer-events-none fixed inset-0 -z-10 overflow-hidden bg-[var(--paper)]">
       {underlay && layer(underlay, false)}
       {current && layer(current, true)}
       {/* Veil: strong on the left (content side), lighter on the right so the art shows. */}

@@ -5,16 +5,16 @@ export type Tool = {
   description: string;
   href: string;
   icon: ReactNode;
-  /** Tailwind classes for the icon tile. */
-  accent: string;
+  /** A short Japanese label shown under the name (manga style). */
+  jp: string;
   /** Where the tool is listed in the side rails: website work on the left, media on the right. */
   group: ToolGroup;
 };
 
 export type ToolGroup = "site" | "media";
-export const TOOL_GROUPS: { id: ToolGroup; label: string }[] = [
-  { id: "site", label: "Websites & writing" },
-  { id: "media", label: "Images & video" },
+export const TOOL_GROUPS: { id: ToolGroup; label: string; jp: string }[] = [
+  { id: "site", label: "Websites & writing", jp: "ウェブ・文章" },
+  { id: "media", label: "Images & video", jp: "画像・動画" },
 ];
 
 function Icon({ children }: { children: ReactNode }) {
@@ -23,7 +23,7 @@ function Icon({ children }: { children: ReactNode }) {
       viewBox="0 0 24 24"
       fill="none"
       stroke="currentColor"
-      strokeWidth={1.8}
+      strokeWidth={2.5}
       strokeLinecap="round"
       strokeLinejoin="round"
       className="h-6 w-6"
@@ -41,7 +41,7 @@ export const TOOLS: Tool[] = [
     group: "media",
     description: "Render page 1 of one or more PDFs to downloadable images.",
     href: "/pdf-cover",
-    accent: "bg-rose-100 text-rose-600 dark:bg-rose-500/15 dark:text-rose-400",
+    jp: "PDF表紙",
     icon: (
       <Icon>
         <path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z" />
@@ -55,7 +55,7 @@ export const TOOLS: Tool[] = [
     group: "media",
     description: "Cover images for every video and PDF in a folder, made on your device.",
     href: "/folder-thumbnails",
-    accent: "bg-orange-100 text-orange-600 dark:bg-orange-500/15 dark:text-orange-400",
+    jp: "一括サムネ",
     icon: (
       <Icon>
         <path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
@@ -68,7 +68,7 @@ export const TOOLS: Tool[] = [
     group: "site",
     description: "Pick colors from a screenshot and try them on dark, light, and color-block layouts.",
     href: "/color-palette",
-    accent: "bg-teal-100 text-teal-600 dark:bg-teal-500/15 dark:text-teal-400",
+    jp: "配色",
     icon: (
       <Icon>
         <path d="M12 3a9 9 0 1 0 0 18c1.2 0 2-.8 2-1.9 0-.5-.2-.9-.5-1.3-.3-.3-.5-.7-.5-1.2 0-1.1.9-2 2-2h2.2A4.8 4.8 0 0 0 21 9.8C21 6 17 3 12 3" />
@@ -83,7 +83,7 @@ export const TOOLS: Tool[] = [
     group: "media",
     description: "Shrink videos on your computer and save them next to the originals.",
     href: "/video-compressor",
-    accent: "bg-indigo-100 text-indigo-600 dark:bg-indigo-500/15 dark:text-indigo-400",
+    jp: "動画圧縮",
     icon: (
       <Icon>
         <rect x="3" y="6" width="13" height="12" rx="2" />
@@ -97,7 +97,7 @@ export const TOOLS: Tool[] = [
     group: "media",
     description: "Trace a PNG or JPG logo into a clean SVG, single or multi-color.",
     href: "/logo-to-svg",
-    accent: "bg-fuchsia-100 text-fuchsia-600 dark:bg-fuchsia-500/15 dark:text-fuchsia-400",
+    jp: "ロゴ変換",
     icon: (
       <Icon>
         <path d="M4 20c4-1 6-5 8-9s4-7 8-7" />
@@ -112,7 +112,7 @@ export const TOOLS: Tool[] = [
     group: "media",
     description: "Auto-detect the face in a photo and crop it into a profile picture.",
     href: "/headshot",
-    accent: "bg-lime-100 text-lime-600 dark:bg-lime-500/15 dark:text-lime-400",
+    jp: "顔写真",
     icon: (
       <Icon>
         <path d="M4 8V5a1 1 0 0 1 1-1h3M16 4h3a1 1 0 0 1 1 1v3M20 16v3a1 1 0 0 1-1 1h-3M8 20H5a1 1 0 0 1-1-1v-3" />
@@ -126,7 +126,7 @@ export const TOOLS: Tool[] = [
     group: "site",
     description: "Write HTML and CSS in a VS Code-style editor with a live preview.",
     href: "/code-editor",
-    accent: "bg-cyan-100 text-cyan-600 dark:bg-cyan-500/15 dark:text-cyan-400",
+    jp: "コード編集",
     icon: (
       <Icon>
         <path d="m8 7-5 5 5 5M16 7l5 5-5 5M13.5 5l-3 14" />
@@ -138,7 +138,7 @@ export const TOOLS: Tool[] = [
     group: "site",
     description: "Ready-made homepage headings, profile sections and content layouts to copy as HTML and CSS.",
     href: "/sections",
-    accent: "bg-pink-100 text-pink-600 dark:bg-pink-500/15 dark:text-pink-400",
+    jp: "セクション集",
     icon: (
       <Icon>
         <rect x="3" y="4" width="18" height="7" rx="1.5" />
@@ -152,7 +152,7 @@ export const TOOLS: Tool[] = [
     group: "site",
     description: "SEO, broken pages, dead links, spelling, and site-wide search for links, words, colors and letter case on LP sites.",
     href: "/audit",
-    accent: "bg-yellow-100 text-yellow-700 dark:bg-yellow-500/15 dark:text-yellow-400",
+    jp: "サイト監査",
     icon: (
       <Icon>
         <path d="M9 11l2 2 4-4" />
@@ -165,7 +165,7 @@ export const TOOLS: Tool[] = [
     group: "site",
     description: "Check whether your copy is on a site, and see what's missing or changed.",
     href: "/content-check",
-    accent: "bg-blue-100 text-blue-600 dark:bg-blue-500/15 dark:text-blue-400",
+    jp: "原稿チェック",
     icon: (
       <Icon>
         <path d="M11 21H7a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h7l5 5v2.5" />
@@ -181,7 +181,7 @@ export const TOOLS: Tool[] = [
     group: "media",
     description: "Grab and download the thumbnail of a public Google Drive video.",
     href: "/drive-thumbnail",
-    accent: "bg-emerald-100 text-emerald-600 dark:bg-emerald-500/15 dark:text-emerald-400",
+    jp: "ドライブ",
     icon: (
       <Icon>
         <path d="M8.5 4h7l5 8.5-3.5 6h-10L3.5 12.5z" />
@@ -194,7 +194,7 @@ export const TOOLS: Tool[] = [
     group: "media",
     description: "Get a video's thumbnail, title, and an autoplay embed link.",
     href: "/youtube",
-    accent: "bg-red-100 text-red-600 dark:bg-red-500/15 dark:text-red-400",
+    jp: "動画情報",
     icon: (
       <Icon>
         <rect x="2.5" y="5.5" width="19" height="13" rx="3.5" />
@@ -207,7 +207,7 @@ export const TOOLS: Tool[] = [
     group: "media",
     description: "List every upload on a channel with copyable links.",
     href: "/channel",
-    accent: "bg-violet-100 text-violet-600 dark:bg-violet-500/15 dark:text-violet-400",
+    jp: "チャンネル",
     icon: (
       <Icon>
         <rect x="3" y="3" width="7.5" height="7.5" rx="1.5" />
@@ -222,7 +222,7 @@ export const TOOLS: Tool[] = [
     group: "site",
     description: "Client notes with links, ticket and opportunity notes, and a highlighter. Stays open while you use other tools.",
     href: "/notes",
-    accent: "bg-amber-100 text-amber-600 dark:bg-amber-500/15 dark:text-amber-400",
+    jp: "メモ",
     icon: (
       <Icon>
         <path d="M5 4h10l4 4v12H5z" />
@@ -236,7 +236,7 @@ export const TOOLS: Tool[] = [
     group: "site",
     description: "Clean up a US phone number into the format you need.",
     href: "/phone-formatter",
-    accent: "bg-sky-100 text-sky-600 dark:bg-sky-500/15 dark:text-sky-400",
+    jp: "電話番号整形",
     icon: (
       <Icon>
         <path d="M5 4h3.5l1.5 4.5-2 1.5a11 11 0 0 0 6 6l1.5-2 4.5 1.5V19a2 2 0 0 1-2 2A16 16 0 0 1 3 6a2 2 0 0 1 2-2" />
@@ -248,7 +248,7 @@ export const TOOLS: Tool[] = [
     group: "site",
     description: "Errors logged by every tool, grouped, with details to copy or download.",
     href: "/error-log",
-    accent: "bg-red-100 text-red-600 dark:bg-red-500/15 dark:text-red-400",
+    jp: "エラー記録",
     icon: (
       <Icon>
         <path d="M12 3 2.5 19.5h19z" />
@@ -262,7 +262,7 @@ export const TOOLS: Tool[] = [
     group: "site",
     description: "Fix grammar or make text formal or polite with Gemini or Claude, using your own key.",
     href: "/rewrite",
-    accent: "bg-purple-100 text-purple-600 dark:bg-purple-500/15 dark:text-purple-400",
+    jp: "AI添削",
     icon: (
       <Icon>
         <path d="M4 20h4L19 9a2.8 2.8 0 0 0-4-4L4 16z" />

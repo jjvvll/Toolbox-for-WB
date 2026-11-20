@@ -38,37 +38,37 @@ export default function TemplatesDialog({
 
   return (
     <Modal onClose={onClose} label="Templates" className="max-w-4xl">
-      <div className="flex items-center justify-between border-b border-zinc-200 px-4 py-3 dark:border-zinc-800">
-        <h2 className="font-medium">Templates</h2>
+      <div className="manga-titlebar justify-between px-4 py-2.5">
+        <h2>Templates</h2>
         <button
           type="button"
           onClick={onClose}
           aria-label="Close"
-          className="rounded-md px-2 py-1 text-zinc-500 hover:bg-zinc-100 dark:hover:bg-zinc-900"
+          className="manga-barbutton"
         >
           ✕
         </button>
       </div>
 
       <div className="flex min-h-0 flex-1 flex-col sm:flex-row">
-        <aside className="flex shrink-0 flex-col gap-1 border-b border-zinc-200 p-2 sm:w-56 sm:border-b-0 sm:border-r dark:border-zinc-800">
+        <aside className="manga-tone flex shrink-0 flex-col gap-1 border-b-[3px] border-[var(--ink)] bg-[var(--paper)] p-2 sm:w-56 sm:border-b-0 sm:border-r-[3px]">
           <button
             type="button"
             onClick={create}
-            className="rounded-lg bg-blue-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-blue-700"
+            className="bg-blue-600 px-3 py-1.5 text-sm text-white hover:bg-blue-700"
           >
             + New template
           </button>
-          <ul className="flex gap-1 overflow-x-auto sm:flex-col sm:overflow-y-auto">
+          <ul className="flex gap-1 overflow-x-auto overscroll-contain sm:flex-col sm:overflow-y-auto">
             {templates?.map((t) => (
               <li key={t.id} className="shrink-0">
                 <button
                   type="button"
                   onClick={() => setSelectedId(t.id)}
-                  className={`w-full truncate rounded-md px-3 py-1.5 text-left text-sm ${
+                  className={`w-full truncate border-2 px-3 py-1.5 text-left text-sm font-bold ${
                     selected?.id === t.id
-                      ? "bg-zinc-100 font-medium dark:bg-zinc-800"
-                      : "hover:bg-zinc-50 dark:hover:bg-zinc-900"
+                      ? "border-[var(--ink)] bg-[var(--ink)] text-white"
+                      : "border-transparent bg-[var(--panel)] hover:border-[var(--ink)] hover:bg-[var(--yellow)]"
                   }`}
                 >
                   {t.name || "Untitled template"}
@@ -83,7 +83,7 @@ export default function TemplatesDialog({
           )}
         </aside>
 
-        <div className="min-h-0 flex-1 overflow-y-auto p-4">
+        <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-4">
           {selected ? (
             <TemplateEditor
               key={selected.id}
@@ -118,7 +118,7 @@ function TemplateEditor({
     <div className="flex flex-col gap-3">
       <div className="flex flex-wrap items-end gap-2">
         <label className="flex min-w-0 flex-1 flex-col gap-1">
-          <span className="text-xs font-medium text-zinc-500">Template name</span>
+          <span className="text-xs font-bold text-[var(--ink-soft)]">Template name</span>
           <input
             type="text"
             value={name}
@@ -127,7 +127,7 @@ function TemplateEditor({
               queue({ name: e.target.value.trim() || "Untitled template" });
             }}
             placeholder="e.g. Meeting notes, Daily log"
-            className="w-full rounded-lg border border-zinc-300 bg-background px-3 py-1.5 text-base font-medium outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 dark:border-zinc-700"
+            className="w-full border-2 border-zinc-900 bg-background px-3 py-1.5 text-base font-bold outline-none"
           />
         </label>
         <button
@@ -136,14 +136,14 @@ function TemplateEditor({
             await flush();
             onUse();
           }}
-          className="rounded-lg bg-blue-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-blue-700"
+          className="bg-blue-600 px-3 py-1.5 text-sm text-white hover:bg-blue-700"
         >
           New note from this
         </button>
         <button
           type="button"
           onClick={onDelete}
-          className="rounded-lg border border-zinc-300 px-3 py-1.5 text-sm text-red-600 hover:bg-red-50 dark:border-zinc-700 dark:hover:bg-red-950/30"
+          className="border-2 border-[var(--red-deep)] bg-[var(--panel)] px-3 py-1.5 text-sm font-bold text-[var(--red-deep)] hover:bg-[var(--yellow)]"
         >
           Delete
         </button>

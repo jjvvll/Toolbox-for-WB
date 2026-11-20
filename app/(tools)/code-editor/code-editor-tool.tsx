@@ -37,14 +37,6 @@ const iconButton =
 /** Which name is being typed in the explorer: a new file, or a rename of an existing one. */
 type NameEdit = { renaming: string | null; value: string };
 
-const darkQuery = "(prefers-color-scheme: dark)";
-
-function subscribeDark(onChange: () => void) {
-  const query = window.matchMedia(darkQuery);
-  query.addEventListener("change", onChange);
-  return () => query.removeEventListener("change", onChange);
-}
-
 /** Fires when the palette tool saves in another tab, so the preview follows it live. */
 function subscribeStorage(onChange: () => void) {
   window.addEventListener("storage", onChange);
@@ -80,11 +72,8 @@ export default function CodeEditorTool() {
   const [monaco, setMonaco] = useState<Monaco | null>(null);
   const previewScroll = useRef({ x: 0, y: 0 });
 
-  const dark = useSyncExternalStore(
-    subscribeDark,
-    () => window.matchMedia(darkQuery).matches,
-    () => false,
-  );
+  // The app is light-only (manga style), so the editor and preview are too.
+  const dark = false;
 
   const current = files.find((f) => f.name === active) ?? files[0];
   const previewFile =

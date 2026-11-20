@@ -49,26 +49,45 @@ export const DESIGN_FIELDS = [
   { key: "more", label: "More details" },
 ] as const;
 
-/** The parts of the compliance page, each with a link and pasted guidelines. */
+/** The parts of the compliance page: each lists its states / MLSs / brokerages (a name and a link each) and the pasted guidelines. */
 export const COMPLIANCE_PARTS = [
-  { key: "state", label: "State compliance" },
-  { key: "mls", label: "MLS compliance" },
-  { key: "brokerage", label: "Brokerage compliance" },
+  { key: "state", label: "State compliance", item: "state" },
+  { key: "mls", label: "MLS compliance", item: "MLS" },
+  { key: "brokerage", label: "Brokerage compliance", item: "brokerage" },
 ] as const;
 export type ComplianceKey = (typeof COMPLIANCE_PARTS)[number]["key"];
+/** One state, MLS or brokerage: its name and a link to its guidelines. */
+export type ComplianceEntry = { title: string; link: string };
 export type CompliancePart = {
-  /** A link to the guidelines (or a short description). */
-  link: string;
+  /** Usually one, sometimes two or more. Read through `complianceEntries`, which also reads the older shapes below. */
+  entries?: ComplianceEntry[];
+  /** Older shape: one link for the whole part. */
+  link?: string;
+  /** Older shape (briefly): names without their own links. */
+  titles?: string[];
   /** Tiptap HTML. */
   notes: string;
 };
 export type Compliance = Partial<Record<ComplianceKey, CompliancePart>>;
-export const EMPTY_COMPLIANCE_PART: CompliancePart = { link: "", notes: "" };
+export const EMPTY_COMPLIANCE_PART: CompliancePart = { notes: "" };
+
+/**
+ * A part's entries. Parts saved before entries existed are converted the same way the SQL
+ * view does it: each older title becomes an entry, the first one taking the part's old link;
+ * a link with no titles becomes one unnamed entry.
+ */
+export function complianceEntries(part: CompliancePart | undefined): ComplianceEntry[] {
+  if (!part) return [];
+  if (Array.isArray(part.entries)) return part.entries;
+  const link = part.link?.trim() ?? "";
+  if (part.titles?.length) return part.titles.map((title, i) => ({ title, link: i === 0 ? link : "" }));
+  return link ? [{ title: "", link }] : [];
+}
 
 /** A note's compliance parts. Text from the first version (one text area) goes under State compliance. */
 export function complianceOf(note: Pick<Note, "compliance">): Compliance {
   const c = note.compliance;
-  if (typeof c === "string") return c ? { state: { link: "", notes: c } } : {};
+  if (typeof c === "string") return c ? { state: { notes: c } } : {};
   return c ?? {};
 }
 
@@ -160,6 +179,82 @@ for (const table of [db.notes, db.folders, db.templates]) {
   });
   t.hook("updating", (mods) => ("updatedAt" in mods ? undefined : { updatedAt: Date.now() }));
 }
+
+// ---------- the change feed ----------
+//
+// Which records were just written, with their new values, so the notes grid and the sync
+// can update only what changed instead of reloading every note after each save. Reported
+// once the write is committed (nothing for a write that's rolled back), and also for writes
+// made in other tabs of this browser.
+
+export type SyncedRecord = { id: string; updatedAt?: number } & Record<string, unknown>;
+export type RecordChanges = {
+  table: SyncedTable;
+  /** New values of records added or changed here. Null when the change came from another tab (read it if needed). */
+  puts: Map<string, SyncedRecord | null>;
+  deletes: Set<string>;
+  /** True when the write was made in another tab. */
+  remote: boolean;
+};
+
+const changeListeners = new Set<(c: RecordChanges) => void>();
+/** Calls `fn` after every committed write to notes, folders or templates. Returns the unsubscribe. */
+export function onRecordsChanged(fn: (c: RecordChanges) => void) {
+  changeListeners.add(fn);
+  return () => void changeListeners.delete(fn);
+}
+const emitChanges = (c: RecordChanges) => changeListeners.forEach((fn) => fn(c));
+
+type Pending = Map<SyncedTable, { puts: Map<string, SyncedRecord>; deletes: Set<string> }>;
+const pendingByTrans = new WeakMap<object, Pending>();
+const channel = typeof BroadcastChannel !== "undefined" ? new BroadcastChannel("toolbox-notes-changes") : null;
+
+type DexieTrans = { parent?: DexieTrans; on: (event: "complete", fn: () => void) => void };
+function track(trans: DexieTrans, table: SyncedTable, id: string, value: SyncedRecord | null) {
+  let root = trans;
+  while (root.parent) root = root.parent; // a nested transaction commits with its outermost one
+  let pending = pendingByTrans.get(root);
+  if (!pending) {
+    const p: Pending = new Map();
+    pending = p;
+    pendingByTrans.set(root, p);
+    root.on("complete", () => {
+      for (const [t, { puts, deletes }] of p) {
+        emitChanges({ table: t, puts, deletes, remote: false });
+        channel?.postMessage({ table: t, puts: [...puts.keys()], deletes: [...deletes] });
+      }
+    });
+  }
+  let c = pending.get(table);
+  if (!c) pending.set(table, (c = { puts: new Map(), deletes: new Set() }));
+  if (value) {
+    c.puts.set(id, value);
+    c.deletes.delete(id);
+  } else {
+    c.puts.delete(id);
+    c.deletes.add(id);
+  }
+}
+
+for (const name of SYNCED_TABLES) {
+  const t = db[name] as unknown as EntityTable<SyncedRecord, "id">;
+  t.hook("creating", function (key, obj, trans) {
+    // `obj` is the stored object; the hook above has already given it its updatedAt.
+    track(trans as unknown as DexieTrans, name, String(key ?? obj.id), obj);
+  });
+  t.hook("updating", function (_mods, key, _obj, trans) {
+    // Called with the stored value once the write has gone through.
+    this.onsuccess = (updated: SyncedRecord) => track(trans as unknown as DexieTrans, name, String(key), updated);
+  });
+  t.hook("deleting", function (key, _obj, trans) {
+    track(trans as unknown as DexieTrans, name, String(key), null);
+  });
+}
+
+channel?.addEventListener("message", (e: MessageEvent<{ table: SyncedTable; puts: string[]; deletes: string[] }>) => {
+  const { table, puts, deletes } = e.data;
+  emitChanges({ table, puts: new Map(puts.map((id) => [id, null])), deletes: new Set(deletes), remote: true });
+});
 
 /**
  * Deletes a note after asking twice ("Are you sure?", then "Are you really sure?").
