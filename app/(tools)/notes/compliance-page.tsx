@@ -1,7 +1,7 @@
 "use client";
 
 import { memo, useRef, useState } from "react";
-import { Section, fieldInput, href, iconButton, isUrl } from "./note-form";
+import { CopyButton, Section, href, isUrl, smallIcon } from "./note-form";
 import RichEditor from "./rich-editor";
 import {
   COMPLIANCE_PARTS,
@@ -48,25 +48,20 @@ const CompliancePage = memo(function CompliancePage({ note }: { note: Note }) {
 
   return (
     <div className="flex flex-col gap-4">
-      {COMPLIANCE_PARTS.map((p, i) => (
-        <div key={p.key} className={i === 0 ? "[&>section]:border-t-0 [&>section]:pt-0" : undefined}>
-          <Section title={p.label}>
-            <EntryRows item={p.item} entries={complianceEntries(parts[p.key])} onChange={(entries) => setEntries(p.key, entries)} />
-            <RichEditor
-              key={`${note.id}-compliance-${p.key}`}
-              fieldId={`${note.id}-compliance-${p.key}`}
-              fieldLabel={p.label}
-              content={initial[p.key]?.notes ?? ""}
-              minHeight="min-h-[30vh]"
-              placeholder={`Paste the ${p.label.toLowerCase()} guidelines here, then highlight what you need to implement…`}
-              onChange={({ html }) => setNotes(p.key, html)}
-            />
-          </Section>
-        </div>
+      {COMPLIANCE_PARTS.map((p) => (
+        <Section key={p.key} title={p.label}>
+          <EntryRows item={p.item} entries={complianceEntries(parts[p.key])} onChange={(entries) => setEntries(p.key, entries)} />
+          <RichEditor
+            key={`${note.id}-compliance-${p.key}`}
+            fieldId={`${note.id}-compliance-${p.key}`}
+            fieldLabel={p.label}
+            content={initial[p.key]?.notes ?? ""}
+            minHeight="min-h-28"
+            placeholder={`Paste the ${p.label.toLowerCase()} guidelines here, then highlight what you need to implement…`}
+            onChange={({ html }) => setNotes(p.key, html)}
+          />
+        </Section>
       ))}
-      <p className="text-[11px] text-zinc-400">
-        Changes save automatically. Highlight the parts you need to implement; they show up in the checklist, where you can tick them off.
-      </p>
     </div>
   );
 });
@@ -109,7 +104,7 @@ function EntryRows({ item, entries, onChange }: { item: string; entries: Complia
           setAdded(rows.length);
           onChange([...rows, BLANK]);
         }}
-        className="self-start text-xs font-black text-[var(--red-deep)] hover:underline"
+        className="note-add self-start"
       >
         + Add {item}
       </button>
@@ -134,13 +129,12 @@ function EntryRow({
   onChange: (patch: Partial<ComplianceEntry>) => void;
   onRemove?: () => void;
 }) {
-  const [copied, setCopied] = useState(false);
   const name = number ? `${item} ${number}` : item;
   const link = entry.link;
   return (
-    <div className="flex flex-wrap items-start gap-2 sm:flex-nowrap">
+    <div className="flex flex-wrap items-center gap-2 sm:flex-nowrap">
       <input
-        className={`${fieldInput} basis-full font-bold sm:basis-56 sm:flex-none`}
+        className="note-input basis-full font-bold sm:basis-48 sm:flex-none"
         value={entry.title}
         onChange={(e) => onChange({ title: e.target.value })}
         placeholder={`${item[0].toUpperCase()}${item.slice(1)} name`}
@@ -148,40 +142,21 @@ function EntryRow({
         autoFocus={focus}
       />
       <input
-        className={fieldInput}
+        className="note-input"
         value={link}
         onChange={(e) => onChange({ link: e.target.value })}
         placeholder="Link to its guidelines"
         spellCheck={false}
         aria-label={`${name} link`}
       />
-      <a
-        href={isUrl(link) ? href(link) : undefined}
-        target="_blank"
-        rel="noopener noreferrer"
-        aria-disabled={!isUrl(link)}
-        title={isUrl(link) ? `Open the ${name} link` : "Add a link to open it"}
-        className={`${iconButton} ${isUrl(link) ? "" : "pointer-events-none opacity-30"}`}
-      >
-        ↗
-      </a>
-      <button
-        type="button"
-        disabled={!link.trim()}
-        title={`Copy the ${name} link`}
-        aria-label={`Copy the ${name} link`}
-        onClick={() =>
-          navigator.clipboard.writeText(link.trim()).then(() => {
-            setCopied(true);
-            setTimeout(() => setCopied(false), 1200);
-          })
-        }
-        className={iconButton}
-      >
-        {copied ? "✓" : "⧉"}
-      </button>
+      {isUrl(link) && (
+        <a href={href(link)} target="_blank" rel="noopener noreferrer" title={`Open the ${name} link`} aria-label={`Open the ${name} link`} className={smallIcon}>
+          ↗
+        </a>
+      )}
+      {link.trim() && <CopyButton text={link} title={`Copy the ${name} link`} />}
       {onRemove && (
-        <button type="button" onClick={onRemove} className={iconButton} title={`Remove ${name}`} aria-label={`Remove ${name}`}>
+        <button type="button" onClick={onRemove} className={smallIcon} title={`Remove ${name}`} aria-label={`Remove ${name}`}>
           ✕
         </button>
       )}

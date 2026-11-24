@@ -623,6 +623,11 @@ table tbody tr {
   color: #111;
 }
 
+/* A link in a note turns yellow under the pointer: black text on it, not light red. */
+.manga-dark .tiptap-content a:hover {
+  color: #111;
+}
+
 /* Its watermark needs a little more ink to show on black. */
 .manga-dark.tool-panel::after {
   -webkit-text-stroke-color: color-mix(in srgb, var(--ink) 16%, transparent);
@@ -658,6 +663,149 @@ table tbody tr {
   background: #0b0a09;
   color: #ece5d6;
   border: 2px solid var(--color-zinc-300);
+}
+
+/* ---------- the note window's fields ----------
+   Quiet until used: no boxes around everything, so the text is what stands out. */
+
+.note-field {
+  border-left: 3px solid var(--color-zinc-200);
+  background: color-mix(in srgb, var(--ink) 4%, transparent);
+  overflow: hidden;
+  transition:
+    border-color 120ms,
+    background-color 120ms;
+}
+.note-field:hover {
+  border-left-color: var(--color-zinc-400);
+}
+.note-field:focus-within {
+  border-left-color: var(--red);
+  background: color-mix(in srgb, var(--ink) 7%, transparent);
+}
+/* The colored edge and lighter fill already show which field has the cursor. */
+.note-field .tiptap-content:focus-visible {
+  outline: none !important;
+}
+.note-input {
+  min-width: 0;
+  flex: 1;
+  border: 0;
+  border-bottom: 1px solid var(--color-zinc-300);
+  background: transparent;
+  padding: 4px 6px;
+  font-size: 0.875rem;
+}
+.note-input::placeholder {
+  color: var(--color-zinc-400);
+}
+.note-select {
+  max-width: 11rem;
+  border: 1px solid var(--color-zinc-300);
+  background: var(--panel);
+  padding: 3px 6px;
+  font-size: 0.75rem;
+}
+/* The title in the window's title bar. */
+.note-title {
+  min-width: 0;
+  flex: 1;
+  background: transparent;
+  color: #fff;
+  padding: 2px 6px;
+  font-size: 1rem;
+  text-overflow: ellipsis;
+}
+.note-title::placeholder {
+  color: rgb(255 255 255 / 0.5);
+}
+/* "+ Link": an empty optional field. */
+.note-add {
+  border: 1px dashed var(--color-zinc-300);
+  padding: 2px 8px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: var(--color-zinc-500);
+}
+.note-add:hover {
+  border-color: var(--yellow);
+  background: var(--yellow);
+  color: #111;
+}
+.note-section > summary {
+  display: flex;
+  cursor: pointer;
+  list-style: none;
+  align-items: center;
+  gap: 8px;
+  font-weight: 900;
+}
+.note-section > summary::-webkit-details-marker {
+  display: none;
+}
+.note-section > summary::before {
+  content: "▸" / "";
+  width: 0.8em;
+  color: var(--color-zinc-400);
+}
+.note-section[open] > summary::before {
+  content: "▾" / "";
+}
+/* A rule after the heading, to the edge of the window. */
+.note-section > summary::after {
+  content: "";
+  flex: 1;
+  border-top: 1px solid var(--color-zinc-200);
+}
+
+/* ---------- rearranging folders ---------- */
+
+.folder-handle {
+  display: flex;
+  height: 28px;
+  width: 24px;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  color: var(--color-zinc-500);
+  cursor: grab;
+  touch-action: none; /* dragging it doesn't scroll the list */
+  -webkit-user-select: none;
+  user-select: none;
+}
+.folder-handle:hover {
+  background: var(--yellow);
+  color: #111;
+}
+.folder-dragging,
+.folder-dragging * {
+  cursor: grabbing !important;
+}
+/* The folder being dragged follows the pointer; its place stays empty until it's dropped. */
+.folder-list > [data-dragging] {
+  position: relative;
+  z-index: 2;
+  pointer-events: none;
+  outline: 2px solid var(--ink);
+  box-shadow: 4px 4px 0 var(--red);
+}
+/* Where it will land. */
+.folder-list[data-drop]::before {
+  content: "";
+  position: absolute;
+  z-index: 1;
+  top: calc(var(--drop-y) - 2px);
+  left: 12px;
+  right: 12px;
+  height: 4px;
+  background: var(--red);
+  pointer-events: none;
+}
+@media (forced-colors: active) {
+  .folder-list[data-drop]::before {
+    background: Highlight;
+    forced-color-adjust: none;
+  }
 }
 
 /* ---------- rich-text editor (Notes tool) ---------- */
@@ -704,12 +852,32 @@ table tbody tr {
 .tiptap-content li + li {
   margin-top: 0.2em;
 }
-/* Highlighted keywords: the color comes from the highlighter; dark text keeps them readable. */
+/* Highlighted text: the color is the highlighter's (--mark, set on each highlight), and the
+   text is black or white, whichever can be read on it. Every highlighter color is light, so
+   dark text is right where contrast-color() isn't supported. */
 .tiptap-content mark {
-  color: #18181b;
+  background-color: var(--mark, #fde047);
+  color: #111;
   padding: 0 2px;
   box-decoration-break: clone;
   -webkit-box-decoration-break: clone;
+}
+@supports (color: contrast-color(red)) {
+  .tiptap-content mark {
+    color: contrast-color(var(--mark, #fde047));
+  }
+}
+/* Links, bold and other formatting inside a highlight take its text color too. */
+.tiptap-content mark * {
+  color: inherit;
+  background: none;
+  text-decoration-color: currentColor;
+}
+/* Selected text inside a highlight: the usual yellow wouldn't show on a yellow highlight. */
+.tiptap-content mark::selection,
+.tiptap-content mark *::selection {
+  background: var(--red-strong);
+  color: #fff;
 }
 /* Linked words stand out: red, underlined, with a light tint. */
 .tiptap-content a {

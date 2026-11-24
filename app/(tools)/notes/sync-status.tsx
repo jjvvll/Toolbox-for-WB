@@ -43,7 +43,13 @@ export function NoteSyncBadge({ noteId }: { noteId: string }) {
   const look = lookFor(s, s.pending.has(syncKey("notes", noteId)), retryIn);
   return (
     <span className="flex items-center gap-1.5">
-      <span title={look.detail ?? look.text} className={`flex items-center gap-1.5 whitespace-nowrap rounded-full px-2 py-0.5 text-[11px] font-medium ring-1 ${TONE[look.tone]}`}>
+      {/* Plain text while all is well; a colored badge only when something needs attention. */}
+      <span
+        title={look.detail ?? look.text}
+        className={`flex items-center gap-1.5 whitespace-nowrap text-[11px] font-medium ${
+          look.tone === "warn" || look.tone === "bad" ? `rounded-full px-2 py-0.5 ring-1 ${TONE[look.tone]}` : "text-white/70"
+        }`}
+      >
         <Dot tone={look.tone} />
         {look.text}
       </span>

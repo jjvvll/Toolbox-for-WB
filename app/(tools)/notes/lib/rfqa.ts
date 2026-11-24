@@ -29,7 +29,8 @@ export async function sideMenuPages(frontEnd: string): Promise<string[]> {
   for (const link of read.links) {
     if (link.source !== "Menu") continue;
     const key = pathKey(new URL(link.href).pathname);
-    const name = link.text || key;
+    // The home page is always listed as "Home" (its menu link is often a logo, or has no text).
+    const name = key === "/" ? "Home" : link.text || key;
     if (seen.has(key) || /^home search$/i.test(name)) continue;
     seen.add(key);
     names.push(name);

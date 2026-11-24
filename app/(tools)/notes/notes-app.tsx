@@ -6,11 +6,12 @@ import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import CopyMenu from "./copy-menu";
 import RfqaButton from "./rfqa-button";
 import QuickSearch from "./quick-search";
+import FoldersDialog, { removeFolderWithConfirm, renameFolderWithPrompt } from "./folders-dialog";
 import { CardSyncMark, SyncBanner } from "./sync-status";
 import TemplatesDialog from "./templates-dialog";
 import { exportBackup, importBackup, parseBackup } from "./lib/backup";
 import { htmlToPlainText, noteFullHtml } from "./lib/convert";
-import { LINK_FIELDS, createNote, deleteNoteWithConfirm, deleteRecords, db, deleteFolder, newId, type Folder, type Note } from "./lib/db";
+import { LINK_FIELDS, askNewFolder, createNote, deleteNoteWithConfirm, deleteRecords, db, listFolders, type Folder, type Note } from "./lib/db";
 import { useNoteIndex, type NoteSummary } from "./lib/note-index";
 import { closeNoteWindow, openNote, useNoteWindow } from "./lib/note-window";
 import { displayTitle, noteMatcher, relativeTime } from "./lib/search";
@@ -34,7 +35,7 @@ const folderIcon = (
 export default function NotesApp() {
   // A lightweight entry per note, updated one note at a time (not every note reloaded on each save).
   const notes = useNoteIndex();
-  const folders = useLiveQuery(() => db.folders.orderBy("name").toArray(), []);
+  const folders = useLiveQuery(listFolders, []);
   const templates = useLiveQuery(() => db.templates.orderBy("name").toArray(), []);
   const win = useNoteWindow();
 
@@ -42,6 +43,7 @@ export default function NotesApp() {
   const [search, setSearch] = useState("");
   const [quickOpen, setQuickOpen] = useState(false);
   const [templatesOpen, setTemplatesOpen] = useState(false);
+  const [foldersOpen, setFoldersOpen] = useState(false);
   const [templateMenuOpen, setTemplateMenuOpen] = useState(false);
   const [status, setStatus] = useState<{ kind: "ok" | "error"; text: string } | null>(null);
   const importInput = useRef<HTMLInputElement>(null);
@@ -88,15 +90,19 @@ export default function NotesApp() {
     return [...counts].sort((a, b) => a[0].localeCompare(b[0]));
   }, [notes]);
 
+  // A note whose folder no longer exists (deleted in another browser, say) counts as "No folder".
+  const folderIds = useMemo(() => new Set((folders ?? []).map((f) => f.id)), [folders]);
+  const isUnfiled = (n: NoteSummary) => !n.folderId || !folderIds.has(n.folderId);
+
   const visibleNotes = useMemo(() => {
     const matcher = noteMatcher(search);
     return (notes ?? []).filter((n) => {
-      if (filter.kind === "unfiled" && n.folderId) return false;
+      if (filter.kind === "unfiled" && n.folderId && folderIds.has(n.folderId)) return false;
       if (filter.kind === "folder" && n.folderId !== filter.id) return false;
       if (filter.kind === "tag" && !n.tags.includes(filter.tag)) return false;
       return !matcher || matcher(n);
     });
-  }, [notes, filter, search]);
+  }, [notes, filter, search, folderIds]);
 
   // A note created while a folder or tag is picked goes into it.
   const newNoteDefaults = (): Partial<Note> => ({
@@ -118,24 +124,14 @@ export default function NotesApp() {
   }
 
   async function addFolder() {
-    const name = (await askText({ title: "New folder", placeholder: "Folder name", confirmLabel: "Create" }))?.trim();
-    if (!name) return;
-    const id = newId();
-    await db.folders.add({ id, name, createdAt: Date.now() });
-    setFilter({ kind: "folder", id });
+    const id = await askNewFolder();
+    if (id) setFilter({ kind: "folder", id });
   }
 
-  async function renameFolder(folder: Folder) {
-    const name = (await askText({ title: "Rename folder", defaultValue: folder.name, confirmLabel: "Rename" }))?.trim();
-    if (name && name !== folder.name) await db.folders.update(folder.id, { name });
-  }
+  const countIn = (folderId: string) => notes?.filter((n) => n.folderId === folderId).length ?? 0;
 
   async function removeFolder(folder: Folder) {
-    const count = notes?.filter((n) => n.folderId === folder.id).length ?? 0;
-    const detail = count ? `Its ${count} note${count === 1 ? "" : "s"} will move to “No folder”.` : undefined;
-    if (!(await askConfirm({ title: `Delete the folder “${folder.name}”?`, message: detail, confirmLabel: "Delete", danger: true }))) return;
-    await deleteFolder(folder.id);
-    if (filter.kind === "folder" && filter.id === folder.id) setFilter({ kind: "all" });
+    if ((await removeFolderWithConfirm(folder, countIn(folder.id))) && filter.kind === "folder" && filter.id === folder.id) setFilter({ kind: "all" });
   }
 
   /**
@@ -291,28 +287,39 @@ export default function NotesApp() {
             All <span className="text-xs opacity-60">{notes.length}</span>
           </button>
           <button type="button" className={chipClass(isFilter({ kind: "unfiled" }))} onClick={() => setFilter({ kind: "unfiled" })}>
-            No folder <span className="text-xs opacity-60">{notes.filter((n) => !n.folderId).length}</span>
+            No folder <span className="text-xs opacity-60">{notes.filter(isUnfiled).length}</span>
           </button>
           {folders.map((f) => (
             <button key={f.id} type="button" className={chipClass(isFilter({ kind: "folder", id: f.id }))} onClick={() => setFilter({ kind: "folder", id: f.id })}>
               {folderIcon} {f.name} <span className="text-xs opacity-60">{notes.filter((n) => n.folderId === f.id).length}</span>
             </button>
           ))}
-          <button type="button" onClick={addFolder} className="px-2.5 py-1 text-sm font-black text-[var(--red-deep)] hover:underline">
-            + Folder
+          <button type="button" onClick={addFolder} className="border-2 border-dashed border-[var(--red-deep)] bg-[var(--panel)] px-3 py-1 text-sm font-bold text-[var(--red-deep)] hover:bg-[var(--yellow)]">
+            + New folder
           </button>
-          {currentFolder && (
-            <span className="ml-1 flex gap-1 text-xs">
-              <button type="button" onClick={() => renameFolder(currentFolder)} className="text-zinc-500 hover:text-foreground">
-                Rename
-              </button>
-              ·
-              <button type="button" onClick={() => removeFolder(currentFolder)} className="text-zinc-500 hover:text-red-600">
-                Delete folder
-              </button>
-            </span>
+          {folders.length > 0 && (
+            <button type="button" onClick={() => setFoldersOpen(true)} title="Add, rename, rearrange or delete folders" className="px-2 py-1 text-sm font-bold text-[var(--ink-soft)] underline underline-offset-2 hover:text-[var(--red-deep)]">
+              Manage folders
+            </button>
           )}
         </div>
+        {currentFolder && (
+          <div className="flex flex-wrap items-center gap-2 text-xs">
+            <span className="text-[var(--ink-soft)]">
+              Folder <b>{currentFolder.name}</b>:
+            </span>
+            <button type="button" onClick={() => renameFolderWithPrompt(currentFolder)} className={smallButtonClass}>
+              Rename
+            </button>
+            <button
+              type="button"
+              onClick={() => removeFolder(currentFolder)}
+              className="border-2 border-[var(--red-deep)] bg-[var(--panel)] px-2.5 py-1.5 text-xs font-bold text-[var(--red-deep)] hover:bg-[var(--yellow)]"
+            >
+              Delete folder
+            </button>
+          </div>
+        )}
         {tagCounts.length > 0 && (
           <div className="flex flex-wrap items-center gap-1.5">
             {tagCounts.map(([tag, count]) => (
@@ -395,6 +402,7 @@ export default function NotesApp() {
           }}
         />
       )}
+      {foldersOpen && <FoldersDialog folders={folders} countIn={countIn} onRemove={removeFolder} onClose={() => setFoldersOpen(false)} />}
       {templatesOpen && <TemplatesDialog onClose={() => setTemplatesOpen(false)} onUse={addNoteFromTemplate} />}
     </div>
   );
@@ -406,10 +414,6 @@ const loadForCopy = async (id: string) => {
   return note && { title: note.title, content: noteFullHtml(note) };
 };
 
-/**
- * A card in the grid: title, folder, filled links, a preview, opportunity categories with notes, and tags.
- * Memoized: a note's summary only changes when that note does, so saving one note redraws one card.
- */
 /** The bar shown while picking notes to delete. */
 function SelectionBar({
   count,
@@ -463,6 +467,10 @@ function SelectionBar({
   );
 }
 
+/**
+ * A card in the grid: title, folder, filled links, a preview, opportunity categories with notes, and tags.
+ * Memoized: a note's summary only changes when that note does, so saving one note redraws one card.
+ */
 const NoteCard = memo(function NoteCard({
   note,
   folderName,

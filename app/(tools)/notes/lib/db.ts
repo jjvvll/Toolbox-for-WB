@@ -1,5 +1,5 @@
 import Dexie, { type EntityTable } from "dexie";
-import { askConfirm } from "@/components/ask-dialog";
+import { askConfirm, askText } from "@/components/ask-dialog";
 
 /** The link fields at the top of a note. */
 export const LINK_FIELDS = [
@@ -126,6 +126,8 @@ export type Note = {
 export type Folder = {
   id: string;
   name: string;
+  /** Its place in the list, once folders have been rearranged. Folders without one come last, by name. */
+  order?: number;
   createdAt: number;
   /** Set automatically on every change (older folders get it on their next change). */
   updatedAt?: number;
@@ -320,8 +322,56 @@ export async function createNote(fields: Partial<Note> = {}): Promise<string> {
   return note.id;
 }
 
+/** The last few updatedAt values this tab wrote to each note, to tell its own saves from changes made elsewhere. */
+const ownWrites = new Map<string, number[]>();
+/** Whether this tab saved the note's version with this updatedAt (rather than another tab, the database or an import). */
+export const isOwnWrite = (id: string, updatedAt: number) => !!ownWrites.get(id)?.includes(updatedAt);
+
+/** Settles once every note save started so far has finished. */
+let savesDone: Promise<unknown> = Promise.resolve();
+
 export function updateNote(id: string, changes: Partial<Omit<Note, "id">>) {
-  return db.notes.update(id, { ...changes, updatedAt: Date.now() });
+  const updatedAt = Date.now();
+  ownWrites.set(id, [...(ownWrites.get(id) ?? []).slice(-19), updatedAt]);
+  const save = Promise.resolve(db.notes.update(id, { ...changes, updatedAt }));
+  savesDone = Promise.allSettled([savesDone, save]);
+  return save;
+}
+
+/** A note as it is now, with any save still on its way included. */
+export async function readNote(id: string) {
+  await savesDone;
+  return db.notes.get(id);
+}
+
+/** Adds a folder and returns its id. A name already in use gives that folder instead of a second one. */
+export async function createFolder(name: string): Promise<string> {
+  const wanted = name.trim().toLowerCase();
+  const existing = (await db.folders.toArray()).find((f) => f.name.trim().toLowerCase() === wanted);
+  if (existing) return existing.id;
+  const id = newId();
+  await db.folders.add({ id, name: name.trim(), createdAt: Date.now() });
+  return id;
+}
+
+/** Every folder, in the order the user arranged them. */
+export async function listFolders(): Promise<Folder[]> {
+  const byName = await db.folders.orderBy("name").toArray();
+  return byName.sort((a, b) => (a.order ?? Number.MAX_SAFE_INTEGER) - (b.order ?? Number.MAX_SAFE_INTEGER));
+}
+
+/** Saves a new folder order. Only folders whose place changed are written. */
+export async function reorderFolders(ids: string[]) {
+  await db.transaction("rw", db.folders, async () => {
+    const current = await db.folders.bulkGet(ids);
+    for (const [i, folder] of current.entries()) if (folder && folder.order !== i) await db.folders.update(folder.id, { order: i });
+  });
+}
+
+/** Asks for a new folder's name and adds it. Returns its id, or null when cancelled. */
+export async function askNewFolder(): Promise<string | null> {
+  const name = await askText({ title: "New folder", placeholder: "Folder name", confirmLabel: "Create" });
+  return name?.trim() ? createFolder(name) : null;
 }
 
 export async function deleteFolder(id: string) {

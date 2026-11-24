@@ -12,14 +12,22 @@ export class EditorRegistry {
   private entries = new Map<string, RegisteredEditor>();
   private listeners = new Set<() => void>();
   private version = 0;
+  /** The field being written in (the last one focused): the one the window's format bar works on. */
+  private active: RegisteredEditor | null = null;
+  private activeListeners = new Set<() => void>();
 
   register(entry: RegisteredEditor) {
     this.entries.set(entry.id, entry);
     const onUpdate = () => this.emit();
+    const onFocus = () => this.setActive(entry);
     entry.editor.on("update", onUpdate);
+    entry.editor.on("focus", onFocus);
+    if (entry.editor.isFocused) this.setActive(entry); // focused before it registered
     this.emit();
     return () => {
       entry.editor.off("update", onUpdate);
+      entry.editor.off("focus", onFocus);
+      if (this.active === entry) this.setActive(null);
       if (this.entries.get(entry.id) === entry) this.entries.delete(entry.id);
       this.emit();
     };
@@ -31,6 +39,17 @@ export class EditorRegistry {
       .filter((e) => !e.editor.isDestroyed)
       .sort((a, b) => (a.editor.view.dom.compareDocumentPosition(b.editor.view.dom) & Node.DOCUMENT_POSITION_FOLLOWING ? -1 : 1));
   }
+
+  private setActive(entry: RegisteredEditor | null) {
+    if (this.active === entry) return;
+    this.active = entry;
+    this.activeListeners.forEach((fn) => fn());
+  }
+  subscribeActive = (fn: () => void) => {
+    this.activeListeners.add(fn);
+    return () => void this.activeListeners.delete(fn);
+  };
+  getActive = () => this.active;
 
   private emit() {
     this.version++;

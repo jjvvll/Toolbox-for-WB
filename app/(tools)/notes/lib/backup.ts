@@ -1,5 +1,5 @@
 import { htmlToPlainText } from "./convert";
-import { COMPLIANCE_PARTS, LINK_FIELDS, NOTE_SECTIONS, db, type CompliancePart, type Folder, type Note, type Template } from "./db";
+import { COMPLIANCE_PARTS, LINK_FIELDS, NOTE_SECTIONS, db, syncKey, type CompliancePart, type Folder, type Note, type Template } from "./db";
 
 const FORMAT = "toolbox-notes";
 
@@ -69,7 +69,7 @@ export function parseBackup(json: string) {
   const folders: Folder[] = (Array.isArray(data.folders) ? data.folders : [])
     .filter(isObj)
     .filter((f) => str(f.id) && str(f.name))
-    .map((f) => ({ id: str(f.id), name: str(f.name), createdAt: num(f.createdAt, now) }));
+    .map((f) => ({ id: str(f.id), name: str(f.name), createdAt: num(f.createdAt, now), ...(typeof f.order === "number" ? { order: f.order } : {}) }));
 
   const notes: Note[] = data.notes
     .filter(isObj)
@@ -131,7 +131,16 @@ export function parseBackup(json: string) {
 /** Merges a backup in: records with the same ID are replaced, others are added. */
 export async function importBackup(parsed: ReturnType<typeof parseBackup>) {
   const { notes, folders, templates } = parsed;
-  await db.transaction("rw", db.notes, db.folders, db.templates, async () => {
+  await db.transaction("rw", [db.notes, db.folders, db.templates, db.synced, db.tombstones], async () => {
+    // Imported records count as not sent yet. Without this, bringing back a deleted note could
+    // look already sent, and the next check would delete it again.
+    const keys = [
+      ...notes.map((n) => syncKey("notes", n.id)),
+      ...folders.map((f) => syncKey("folders", f.id)),
+      ...templates.map((t) => syncKey("templates", t.id)),
+    ];
+    await db.synced.bulkDelete(keys);
+    await db.tombstones.bulkDelete(keys);
     await db.folders.bulkPut(folders);
     const known = new Set([...(await db.folders.toCollection().primaryKeys())]);
     // A note pointing at a folder that exists nowhere goes to "no folder".

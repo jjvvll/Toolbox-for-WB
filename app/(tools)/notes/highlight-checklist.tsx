@@ -3,9 +3,9 @@
 import type { Editor } from "@tiptap/react";
 import { memo, useCallback, useContext, useDeferredValue, useLayoutEffect, useMemo, useRef, useSyncExternalStore } from "react";
 import { EditorRegistryContext } from "./editor-registry";
-import { HIGHLIGHTS } from "./rich-editor";
+import { scanHighlights, type HighlightItem } from "./lib/highlight";
 
-type Item = { key: string; editor: Editor; field: string; from: number; to: number; text: string; color: string; done: boolean };
+type Item = HighlightItem & { key: string; editor: Editor };
 
 /**
  * Results per document. Editor documents never change in place (each edit makes a new one),
@@ -13,62 +13,42 @@ type Item = { key: string; editor: Editor; field: string; from: number; to: numb
  * field re-scans that field, not all fifteen.
  */
 const scanned = new WeakMap<object, Item[]>();
-function highlightsIn(editor: Editor, field: string, fieldId: string): Item[] {
+function highlightsIn(editor: Editor, fieldId: string): Item[] {
   const doc = editor.state.doc;
   const cached = scanned.get(doc);
   if (cached) return cached;
-  const items = scan(editor, field, fieldId);
+  // Keyed by order in the field, not position, so typing before a highlight doesn't
+  // make every row after it look new.
+  const items = scanHighlights(doc).map((h, i) => ({ ...h, key: `${fieldId}:${i}`, editor }));
   scanned.set(doc, items);
   return items;
 }
 
-/** Every highlighted run of text in an editor: neighbouring text with the same color counts as one. */
-function scan(editor: Editor, field: string, fieldId: string): Item[] {
-  const out: Item[] = [];
-  let cur: Item | null = null;
-  editor.state.doc.descendants((node, pos) => {
-    if (!node.isText) {
-      cur = null; // a new paragraph or line break starts a new item
-      return;
-    }
-    const mark = node.marks.find((m) => m.type.name === "highlight");
-    if (!mark) {
-      cur = null;
-      return;
-    }
-    const color = (mark.attrs.color as string | null) ?? HIGHLIGHTS[0].color;
-    const struck = node.marks.some((m) => m.type.name === "strike");
-    if (cur && cur.to === pos && cur.color === color) {
-      cur.to = pos + node.nodeSize;
-      cur.text += node.text ?? "";
-      cur.done = cur.done && struck;
-    } else {
-      // Keyed by order in the field, not position, so typing before a highlight doesn't
-      // make every row after it look new.
-      cur = { key: `${fieldId}:${out.length}`, editor, field, from: pos, to: pos + node.nodeSize, text: node.text ?? "", color, done: struck };
-      out.push(cur);
-    }
-  });
-  return out.filter((i) => i.text.trim());
-}
-
-/** Crosses out (or restores) a highlighted run in its editor; saved with the note like any edit. */
+/** Crosses out (or restores) a whole highlight in its editor; saved with the note like any edit. */
 function setDone(item: Item, done: boolean) {
   const { state, view } = item.editor;
   const strike = state.schema.marks.strike;
   if (!strike) return;
-  const tr = done ? state.tr.addMark(item.from, item.to, strike.create()) : state.tr.removeMark(item.from, item.to, strike);
+  const tr = state.tr;
+  for (const { from, to } of item.ranges) {
+    if (done) tr.addMark(from, to, strike.create());
+    else tr.removeMark(from, to, strike);
+  }
   view.dispatch(tr);
 }
 
-/** Selects the highlighted text in its editor and scrolls it into view. */
+/** Selects the highlight in its editor and scrolls it into view, unfolding its section if needed. */
 function jumpTo(item: Item) {
-  item.editor.chain().focus().setTextSelection({ from: item.from, to: item.to }).scrollIntoView().run();
+  const section = item.editor.view.dom.closest("details");
+  if (section) section.open = true;
+  const from = item.ranges[0].from;
+  const to = item.ranges[item.ranges.length - 1].to;
+  item.editor.chain().focus().setTextSelection({ from, to }).scrollIntoView().run();
 }
 
 /**
- * The checklist beside the note window: every highlighted word or phrase in the note,
- * with a checkbox. Checking it crosses the text out in the note.
+ * The checklist beside the note window: every highlight in the note with a checkbox, one
+ * row each however long it is. Checking it crosses the text out in the note.
  */
 export default function HighlightChecklist({ className = "" }: { className?: string }) {
   const registry = useContext(EditorRegistryContext);
@@ -80,7 +60,7 @@ export default function HighlightChecklist({ className = "" }: { className?: str
     if (!registry) return [];
     return registry
       .list()
-      .map((e) => ({ id: e.id, label: e.label, items: highlightsIn(e.editor, e.label, e.id) }))
+      .map((e) => ({ id: e.id, label: e.label, items: highlightsIn(e.editor, e.id) }))
       .filter((g) => g.items.length);
     // `deferredVersion` changes whenever an editor's text changes.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -152,8 +132,11 @@ const Row = memo(function Row({
     <li className="flex items-start gap-2 rounded-lg px-1.5 py-1 hover:bg-zinc-100 dark:hover:bg-zinc-900">
       <input type="checkbox" checked={done} onChange={(e) => onToggle(id, e.target.checked)} className="mt-1 h-4 w-4 shrink-0 accent-emerald-600" aria-label={`Done: ${text}`} />
       <button type="button" onClick={() => onJump(id)} title="Show it in the note" className={`min-w-0 flex-1 text-left text-sm leading-snug ${done ? "text-zinc-400 line-through" : ""}`}>
-        <span className="mr-1.5 inline-block h-2.5 w-2.5 rounded-sm align-middle ring-1 ring-black/10" style={{ background: color }} />
-        {text}
+        {/* Its lines are kept, cut short after a few: clicking the row shows the full text in the note. */}
+        <span className="line-clamp-4 whitespace-pre-line break-words">
+          <span className="mr-1.5 inline-block h-2.5 w-2.5 rounded-sm align-middle ring-1 ring-[var(--ink)]/40" style={{ background: color }} />
+          {text}
+        </span>
       </button>
     </li>
   );
