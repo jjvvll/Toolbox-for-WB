@@ -47,6 +47,7 @@ const FILL: Record<Audience, Record<string, string>> = {
   agent: {
     NAME: "Agent Name",
     FIRST: "Agent",
+    INITIALS: "AN",
     PRETITLE: "Meet Agent Name",
     ROLE: "Realtor®",
     BIO: "A short bio goes here. Share your experience, the areas you serve, and what clients can expect when they work with you.",
@@ -59,6 +60,7 @@ const FILL: Record<Audience, Record<string, string>> = {
   team: {
     NAME: "Team Name",
     FIRST: "Team",
+    INITIALS: "TN",
     PRETITLE: "Meet The Team",
     ROLE: "Real Estate Team",
     BIO: "A short team bio goes here. Share your combined experience, the areas you serve, and what clients can expect when they work with you.",
